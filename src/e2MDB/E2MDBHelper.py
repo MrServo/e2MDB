@@ -380,6 +380,7 @@ class E2MDBHelper:
 					if not alt_id:
 						continue
 					try:
+						# TODO: get_secondary_dicts() was removed with E2MDBScanner.py, port it or use BackendProviderEnricher._get_series_context().
 						alt_series, alt_season, alt_episode = self.get_secondary_dicts(alt_name, alt_id, org_title, match_reason, short_desc, desc)
 					except Exception as err_msg:
 						write_log(f"{self.MODULE_NAME} ERROR in module 'get_alt_provider_artwork_fill': {alt_name}: {err_msg}")
@@ -421,6 +422,7 @@ class E2MDBHelper:
 					if not alt_id:
 						continue
 					try:
+						# TODO: get_secondary_dicts() was removed with E2MDBScanner.py, port it or use BackendProviderEnricher._get_series_context().
 						alt_series, alt_season, alt_episode = self.get_secondary_dicts(alt_name, alt_id, org_title, match_reason, short_desc, desc)
 					except Exception as err_msg:
 						write_log(f"{self.MODULE_NAME} ERROR in module 'get_alt_provider_episode_fill': {alt_name}: {err_msg}")
@@ -483,6 +485,7 @@ class E2MDBHelper:
 			pvr_name = best_hit_dict.get("provider", "")
 			asset_id = best_hit_dict.get("provider_ids", {}).get(pvr_name)
 			if media_type == "series":  # special treatment for series: find and write episode details
+				# TODO: get_secondary_dicts() was removed with E2MDBScanner.py, port it or use BackendProviderEnricher._get_series_context().
 				series_dict, season_dict, episode_dict = self.get_secondary_dicts(pvr_name, asset_id, org_title, match_reason, short_desc, desc)  # get and write series & season details + write season_episodes index
 				final_dict = tagArtworkSource(episode_dict or {}, "episode")  # begin with episode details
 				if season_dict:  # continue with season details

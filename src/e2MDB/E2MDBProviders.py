@@ -122,8 +122,8 @@ class E2MDBProviders:
 		season_episode = ()
 		for name, active in self.series_search_order.items():
 			if name == pvr_name and active:
-				provider = self.providers_dict.get(pvr_name)
-				season_episode = provider.find_season_episode(episode_index, episode_name, plain_season_episode)  # result e.g. ('1-2', '283766', 'Die Warnung')
+				if provider := self.providers_dict.get(pvr_name):
+					season_episode = provider.find_season_episode(episode_index, episode_name, plain_season_episode)  # result e.g. ('1-2', '283766', 'Die Warnung')
 				break
 		return season_episode
 
@@ -198,6 +198,11 @@ class E2MDBProviders:
 			ordered[name] = bool(active)
 		return {name: bool(active and name in self.ready_providers) for name, active in ordered.items()}
 
+	def _prioritize_tmdb(self, search_order, enabled):
+		if not enabled or not search_order.get("tmdb"):
+			return search_order
+		return {"tmdb": True, **{name: active for name, active in search_order.items() if name != "tmdb"}}
+
 	def get_provider_media_types(self, pvr_name, estimated_type):
 		"""Map the requested media family to provider search modes.
 
@@ -224,7 +229,7 @@ class E2MDBProviders:
 			case _:
 				return ["multi"] if pvr_name == "tmdb" else ["series", "movie"]
 
-	def gather_providers_info(self, title, estimated_type, year):
+	def gather_providers_info(self, title, estimated_type, year, prioritize_tmdb=False):
 		norm_dicts = []
 		self.last_search_errors = []
 		estimated_type = str(estimated_type or "multi")
@@ -237,6 +242,7 @@ class E2MDBProviders:
 		else:
 			base_order = self.series_search_order.copy()
 		search_order_dict = self.get_active_provider_order(base_order, special_first=anime_or_manga, manga_only=manga_only)
+		search_order_dict = self._prioritize_tmdb(search_order_dict, prioritize_tmdb)
 		write_log(f"{MODULE_NAME} Gathering data for title '{title}' as '{estimated_type}' using providers: {', '.join([name for name, active in search_order_dict.items() if active]) or 'none'}")
 		for pvr_name, active in search_order_dict.items():  # go through all active providers
 			if not active:

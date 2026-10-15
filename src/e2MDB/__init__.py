@@ -11,7 +11,7 @@ from Components.Language import language
 from Components.International import international
 from Tools.Directories import resolveFilename, SCOPE_PLUGINS
 
-__version__ = "1.1"
+__version__ = "1.2"
 PluginLanguageDomain = "e2MDB"
 PluginLanguageDir = "Extensions/e2MDB/locale"
 
