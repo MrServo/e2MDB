@@ -11,7 +11,7 @@ from Components.Language import language
 from Components.International import international
 from Tools.Directories import resolveFilename, SCOPE_PLUGINS
 
-__version__ = "1.2"
+__version__ = "1.3"
 PluginLanguageDomain = "e2MDB"
 PluginLanguageDir = "Extensions/e2MDB/locale"
 
@@ -23,15 +23,8 @@ class E2MDBGlobals:
 	RESOLUTION = "FHD" if getDesktop(0).size().width() > 1300 else "HD"
 	PLUGINDIR = dirname(modules[__name__].__file__)  # e.g. /usr/lib/enigma2/python/Plugins/Extensions/e2MDB/
 	ICONDIR = join(PLUGINDIR, f"pics/{RESOLUTION}/icons/")
-	CACHEDIRS = ["data", "index", "series", "seasons", "backdrop", "cover", "titlelogo", "image", "preview", "fanart", "fernsehserien", "wikimedia", "wikipedia", "results"]
 	TEMPDIR = "/var/run/e2mdb"
 	REPORTDIR = "/home/root/logs/"
-	# possible separators 'title|episodename' of foreign recordings (e.g. '.mp4'), the order is essential!
-	FOREIGN_SEPAS = (("_", ""), (": ", ": "), (" – ", ""), (" - ", ""), ("! ", "! "))  # (separator, replacement)
-	# possible separators 'title|episodename' of foreign recordings (e.g. '.mp4'), the order is essential!
-	EPGTYPE_SEPAS = (("_", ""), (": ", ": "), (" – ", ""), (" - ", ""), ("! ", "! "), ("|", "|"))  # (separator, replacement)
-	EXCLUDED_DIRS = {"trash", ".trash", "scan", ".scan", "trashcan", ".trashcan"}
-	VIDEO_EXTS = (".ts", ".mkv", ".avi", ".mp4", ".m4v", ".mpg", ".mpeg", ".mov", ".wmv", ".flv", ".stream", ".iso")
 	IMAGE_EXTS = ("jpg", "jpeg", "png", "gif")
 	IMAGE_RESOLUTIONS = {"backdrop": (1280, 720), "cover": (350, 525), "titlelogo": (200, 50)}  # values valid for HD
 	USERAGENT = choice([

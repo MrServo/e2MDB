@@ -18,6 +18,10 @@ from sqlite3 import connect, OperationalError, Row
 from threading import Lock, Thread
 from typing import Any, Optional
 try:
+	from .provider.Common import normalize_text
+except ImportError:  # daemon loads this module without parent package
+	from provider.Common import normalize_text
+try:
 	from . import write_log
 except ImportError:
 	def write_log(*args):
@@ -50,12 +54,6 @@ class MediaDB:
 	def _connect(self):
 		"""Create a new SQLite connection."""
 		return connect(self.db_path, timeout=30)
-
-	def _normalize_search_text(self, value: str) -> str:
-		value = (value or "").strip().lower()
-		value = sub(r"[._\-]+", " ", value)
-		value = sub(r"[^a-z0-9äöüß ]+", " ", value)
-		return sub(r"\s+", " ", value).strip()
 
 	def _create_tables(self):
 		"""Create table and index if they don't exist."""
@@ -572,12 +570,6 @@ class ResultsDB:
 		conn.execute("PRAGMA foreign_keys=ON")
 		return conn
 
-	def _normalize_search_text(self, value: str) -> str:
-		value = (value or "").strip().lower()
-		value = sub(r"[._\-]+", " ", value)
-		value = sub(r"[^a-z0-9äöüß ]+", " ", value)
-		return sub(r"\s+", " ", value).strip()
-
 	def _create_tables(self):
 		"""Create media and results tables if they don't exist"""
 		try:
@@ -668,7 +660,7 @@ class ResultsDB:
 		"""
 		try:
 			with self._connect() as conn:
-				search_string_norm = self._normalize_search_text(search_string)
+				search_string_norm = normalize_text(search_string)
 				conn.execute("""
 					INSERT INTO e2mdb_media (hash, file_path, file_name, search_string, search_string_norm, updated_at)
 					VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -718,7 +710,7 @@ class ResultsDB:
 				# Extract fields from result_data dictionary
 				provider = result_data.get("provider", "")
 				title = result_data.get("title", "")
-				title_norm = self._normalize_search_text(title)
+				title_norm = normalize_text(title)
 				countries = result_data.get("countries", "")
 				released = result_data.get("released", "")
 				media_type = result_data.get("media_type", "")
@@ -769,7 +761,7 @@ class ResultsDB:
 		"""Update stored media path, filename, hash, and optional search string"""
 		try:
 			with self._connect() as conn:
-				search_string_norm = self._normalize_search_text(search_string)
+				search_string_norm = normalize_text(search_string)
 				conn.execute("""
 					UPDATE e2mdb_media
 					SET hash = ?, file_path = ?, file_name = ?, search_string = ?, search_string_norm = ?, updated_at = CURRENT_TIMESTAMP
@@ -946,7 +938,7 @@ class ResultsDB:
 		if media_type in ("movie", "series"):
 			where_clauses.append("LOWER(COALESCE(r.media_type, '')) = ?")
 			params.append(media_type)
-		search_term = self._normalize_search_text(search_term or '')
+		search_term = normalize_text(search_term or '')
 		if search_term and len(search_term) >= 2:
 			prefix_term = f"{search_term}%"
 			contains_term = f"% {search_term}%"
@@ -1192,7 +1184,7 @@ def _browser_cache_root(self):
 
 
 def _browser_sort_title(self, title):
-	norm = self._normalize_search_text(title or '')
+	norm = normalize_text(title or '')
 	for prefix in ('the ', 'a ', 'an ', 'der ', 'die ', 'das ', 'ein ', 'eine '):
 		if norm.startswith(prefix):
 			return norm[len(prefix):]
@@ -1200,7 +1192,7 @@ def _browser_sort_title(self, title):
 
 
 def _browser_letter_for_title(self, title):
-	norm = self._normalize_search_text(title or '')
+	norm = normalize_text(title or '')
 	if not norm:
 		return '#'
 	ch = norm[0].upper()
@@ -1600,7 +1592,7 @@ def _rebuild_browser_cache(self):
 			if provider and provider_id:
 				browser_key = f'{final_media_type}|{provider}|{provider_id}'
 			else:
-				browser_key = f'{final_media_type}|{self._normalize_search_text(final_title)}|{year}'
+				browser_key = f'{final_media_type}|{normalize_text(final_title)}|{year}'
 
 			group = groups.get(browser_key)
 			if group is None:
@@ -1683,7 +1675,7 @@ def _rebuild_browser_cache(self):
 		browser_count = 0
 		for group in groups.values():
 			title = group['title'] or ''
-			title_norm = self._normalize_search_text(title)
+			title_norm = normalize_text(title)
 			sort_title = _browser_sort_title(self, title)
 			letter = _browser_letter_for_title(self, title)
 			year = str(group['released'] or '')[:4]
@@ -1793,7 +1785,7 @@ def _browser_filters_sql(self, media_type='all', search_term='', year='', genre=
 	if media_type in ('movie', 'series'):
 		clauses.append('LOWER(COALESCE(media_type, "")) = ?')
 		params.append(media_type)
-	search_term = self._normalize_search_text(search_term or '')
+	search_term = normalize_text(search_term or '')
 	if search_term:
 		prefix = f'{search_term}%'
 		contains = f'% {search_term}%'
@@ -1817,7 +1809,7 @@ def _browser_filters_sql(self, media_type='all', search_term='', year='', genre=
 	if letter:
 		clauses.append('letter = ?')
 		params.append(letter)
-	cast = self._normalize_search_text(cast or '')
+	cast = normalize_text(cast or '')
 	if cast:
 		prefix = f'{cast}%'
 		contains = f'% {cast}%'
@@ -1854,7 +1846,7 @@ def _browser_direct_filters_sql(self, media_type="all", search_term="", year="",
 	if media_type in ("movie", "series"):
 		clauses.append("LOWER(COALESCE(m.metadata_media_type, '')) = ?")
 		params.append(media_type)
-	search_norm = self._normalize_search_text(search_term or "")
+	search_norm = normalize_text(search_term or "")
 	if search_norm:
 		search_plain = str(search_term or "").strip().lower()
 		prefix = f"{search_norm}%"
@@ -1880,7 +1872,7 @@ def _browser_direct_filters_sql(self, media_type="all", search_term="", year="",
 		else:
 			clauses.append("SUBSTR(UPPER(COALESCE(NULLIF(m.metadata_title, ''), m.search_string, m.file_name, '')), 1, 1) = ?")
 			params.append(letter)
-	cast = self._normalize_search_text(cast or "")
+	cast = normalize_text(cast or "")
 	if cast:
 		prefix = f"{cast}%"
 		contains = f"% {cast}%"
@@ -1980,7 +1972,7 @@ def _browser_direct_item_from_row(self, row, conn=None):
 		if provider and provider_id:
 			browser_key = f"{media_type}|{provider}|{provider_id}"
 		else:
-			browser_key = f"{media_type}|{self._normalize_search_text(item.get('metadata_title') or item.get('title') or item.get('search_string') or item.get('file_name') or '')}|{year}"
+			browser_key = f"{media_type}|{normalize_text(item.get('metadata_title') or item.get('title') or item.get('search_string') or item.get('file_name') or '')}|{year}"
 	cast_names = _browser_names_from_metadata(item.get("metadata_cast") or "")
 	crew_names = _browser_names_from_metadata(item.get("metadata_crew") or "")
 	if not cast_names and not crew_names:
@@ -2003,7 +1995,7 @@ def _browser_direct_item_from_row(self, row, conn=None):
 		"provider": provider,
 		"provider_id": item.get("provider_id") or _browser_direct_provider_id(provider, provider_ids),
 		"title": item.get("title") or item.get("metadata_title") or item.get("search_string") or item.get("file_name") or "",
-		"title_norm": item.get("title_norm") or self._normalize_search_text(item.get("title") or item.get("metadata_title") or item.get("search_string") or ""),
+		"title_norm": item.get("title_norm") or normalize_text(item.get("title") or item.get("metadata_title") or item.get("search_string") or ""),
 		"sort_title": item.get("sort_title") or _browser_sort_title(self, item.get("title") or item.get("metadata_title") or item.get("search_string") or ""),
 		"year": str(year or "")[:4],
 		"released": released or "",
@@ -2790,7 +2782,7 @@ def _live_epg_upsert_event(self, event_data):
 			return None
 		title = str(event_data.get('title') or '')
 		search_title = str(event_data.get('search_title') or title)
-		title_norm = event_data.get('title_norm') or self._normalize_search_text(title)
+		title_norm = event_data.get('title_norm') or normalize_text(title)
 		begin_time = int(event_data.get('begin_time') or 0)
 		duration = int(event_data.get('duration') or 0)
 		event_end = int(event_data.get('event_end') or (begin_time + duration if begin_time and duration else 0))
@@ -2893,7 +2885,7 @@ def _live_epg_get_event_for_service(self, service_ref, event_id=0, begin_time=0,
 			params.append(int(begin_time))
 		if title:
 			clauses.append("title_norm = ?")
-			params.append(self._normalize_search_text(title))
+			params.append(normalize_text(title))
 		with self._connect() as conn:
 			conn.row_factory = Row
 			row = conn.execute(f"""

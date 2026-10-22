@@ -18,6 +18,7 @@ from . import write_log
 from .E2MDBDatabase import resultsdb
 from .E2MDBHelper import E2MDBHelper
 from .E2MDBIgnoreConfig import E2MDBIgnorePatterns
+from .provider.Common import normalize_text
 
 
 EPG_MIN_PROVIDER_DURATION_SECONDS = 15 * 60
@@ -67,12 +68,6 @@ class E2MDBLiveEPG(E2MDBHelper):
 	SOURCE_EPG = "epg"
 	SOURCE_LIVE = "live"
 
-	def normalize_text(self, value):
-		value = (value or "").strip().lower()
-		value = sub(r"[._\-]+", " ", value)
-		value = sub(r"[^a-z0-9äöüß ]+", " ", value)
-		return sub(r"\s+", " ", value).strip()
-
 	def epg_search_title(self, title):
 		"""Return a provider-friendly title for EPG events without changing the stable source key."""
 		cleaned = (title or "").strip()
@@ -110,11 +105,11 @@ class E2MDBLiveEPG(E2MDBHelper):
 			return []
 
 	def _title_matches_ignore_pattern(self, title, search_title=""):
-		text = self.normalize_text(f"{title or ''} {search_title or ''}")
+		text = normalize_text(f"{title or ''} {search_title or ''}")
 		if not text:
 			return ""
 		for pattern in self._ignored_title_patterns():
-			normalized_pattern = self.normalize_text(pattern)
+			normalized_pattern = normalize_text(pattern)
 			if normalized_pattern and normalized_pattern in text:
 				return pattern
 		return ""
@@ -179,11 +174,11 @@ class E2MDBLiveEPG(E2MDBHelper):
 				duration_value = 0
 			if begin_value and duration_value:
 				end_value = begin_value + duration_value
-		identity = f"{source_type or "epg"}|{self.normalize_service_ref(service_ref)}|{begin_value}|{end_value}|{self.normalize_text(title)}"
+		identity = f"{source_type or "epg"}|{self.normalize_service_ref(service_ref)}|{begin_value}|{end_value}|{normalize_text(title)}"
 		return md5(identity.encode("utf-8")).hexdigest()
 
 	def virtual_path(self, source_key, title="", source_type="epg"):
-		clean_title = self.normalize_text(title).replace(" ", "_") or "event"
+		clean_title = normalize_text(title).replace(" ", "_") or "event"
 		return f"/{source_type or 'epg'}/{source_key}_{clean_title[:80]}.ts"
 
 	def default_expiry(self, event_end=0, status="unknown"):

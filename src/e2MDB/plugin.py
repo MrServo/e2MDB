@@ -48,6 +48,7 @@ from .E2MDBPrefillManager import run_prefill_background, request_prefill_backgro
 from .E2MDBCleanupManager import start_cleanup_manager
 from .E2MDBSchedulerTasks import start_scan_task, stop_scan_task, start_cleanup_task, stop_cleanup_task, start_sqlite_maintenance_task, stop_sqlite_maintenance_task
 from .E2MDBPrefillConfig import E2MDBPrefillServices
+from .provider.Common import CACHE_DIRS
 from .E2MDBIgnoreConfig import E2MDBIgnorePatterns
 from .E2MDBBackendConfig import init_backend_config, ensure_backend_dirs, PATHS_FILE, RUNTIME_DIR
 from .E2MDBBackendClient import backend_request, run_backend_live_cleanup, start_backend_scan_and_enrich
@@ -559,7 +560,7 @@ class E2MDBMain(E2MDBHelper, Screen):
 			cache_path = self.get_cache_dir()
 			if not isdir(cache_path):
 				makedirs(cache_path)
-			for sub_path in e2mdbglobals.CACHEDIRS:
+			for sub_path in CACHE_DIRS:
 				path_name = join(cache_path, sub_path)
 				if not isdir(path_name):
 					makedirs(path_name)

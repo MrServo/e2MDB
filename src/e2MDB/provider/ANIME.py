@@ -6,20 +6,18 @@
 
 from datetime import datetime
 from getopt import getopt, GetoptError
-from html import unescape
 from json import dump
-from re import sub
 from sys import exit, argv
 from requests import post, exceptions
 
 try:
-    from .Consts import Fields
+    from .Common import Fields, match_season_episode, html_to_text, set_dict_key
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+    from Common import Fields, match_season_episode, html_to_text, set_dict_key
 
 try:
 	from .. import write_log
@@ -141,12 +139,12 @@ class ProviderANIME:
 			if str(season.get(Fields.SEASON_NO, "")) == season_no:
 				return "", season
 		season_dict = {}
-		self.set_dict_key(season_dict, Fields.PROVIDER, "anime")
-		self.set_dict_key(season_dict, Fields.SERIES_ID, series_dict.get(Fields.SERIES_ID, ""))
-		self.set_dict_key(season_dict, Fields.SEASON_NAME, f"Season {season_no}")
-		self.set_dict_key(season_dict, Fields.SEASON_NO, season_no)
-		self.set_dict_key(season_dict, Fields.COVER_URL, series_dict.get(Fields.COVER_URL, ""))
-		self.set_dict_key(season_dict, Fields.COVER_SRC, "season")
+		set_dict_key(season_dict, Fields.PROVIDER, "anime")
+		set_dict_key(season_dict, Fields.SERIES_ID, series_dict.get(Fields.SERIES_ID, ""))
+		set_dict_key(season_dict, Fields.SEASON_NAME, f"Season {season_no}")
+		set_dict_key(season_dict, Fields.SEASON_NO, season_no)
+		set_dict_key(season_dict, Fields.COVER_URL, series_dict.get(Fields.COVER_URL, ""))
+		set_dict_key(season_dict, Fields.COVER_SRC, "season")
 		return "", season_dict
 
 	def get_episode_details(self, series_id="", episode_id="", season_no="", episode_no=""):
@@ -158,13 +156,13 @@ class ProviderANIME:
 			episode_no = episode_no or (parts[2] if len(parts) > 2 else "")
 		if not (series_id and episode_no):
 			return "", {}
-		self.set_dict_key(episode_dict, Fields.PROVIDER, "anime")
-		self.set_dict_key(episode_dict, Fields.SERIES_ID, str(series_id))
-		self.set_dict_key(episode_dict, Fields.EPISODE_NAME, f"Episode {episode_no}")
-		self.set_dict_key(episode_dict, Fields.EPISODE_ID, str(episode_id or f"{series_id}:{season_no or 1}:{episode_no}"))
-		self.set_dict_key(episode_dict, Fields.SEASON_NO, str(season_no or "1"))
-		self.set_dict_key(episode_dict, Fields.EPISODE_NO, str(episode_no))
-		self.set_dict_key(episode_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(episode_dict, Fields.PROVIDER, "anime")
+		set_dict_key(episode_dict, Fields.SERIES_ID, str(series_id))
+		set_dict_key(episode_dict, Fields.EPISODE_NAME, f"Episode {episode_no}")
+		set_dict_key(episode_dict, Fields.EPISODE_ID, str(episode_id or f"{series_id}:{season_no or 1}:{episode_no}"))
+		set_dict_key(episode_dict, Fields.SEASON_NO, str(season_no or "1"))
+		set_dict_key(episode_dict, Fields.EPISODE_NO, str(episode_no))
+		set_dict_key(episode_dict, Fields.LAST_UPDATED, self.last_update)
 		return "", episode_dict
 
 	def get_asset_details(self, category, asset_id, season_no="", episode_no=""):
@@ -186,21 +184,7 @@ class ProviderANIME:
 		return err_msg, asset_details
 
 	def find_season_episode(self, episode_index, episode_name="", plain_season_episode=""):
-		if episode_index:
-			if plain_season_episode:
-				for episode in episode_index.get("episodes", {}).items():
-					if episode[0] == plain_season_episode:
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-				if str(plain_season_episode).isdigit():
-					for episode in episode_index.get("episodes", {}).items():
-						if episode[0].split("-")[-1] == str(int(plain_season_episode)):
-							return tuple((episode[0], episode[1][0], episode[1][1]))
-			elif episode_name:
-				for episode in episode_index.get("episodes", {}).items():
-					index_name, search_name = episode[1][1].lower(), episode_name.lower()
-					if search_name and (index_name in search_name or search_name in index_name):
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-		return ()
+		return match_season_episode(episode_index, episode_name, plain_season_episode)  # e.g. ('1-2', '283766', 'Die Warnung')
 
 	def get_media_dict(self, media_id, media_kind="ANIME"):
 		query = self.details_query_graphql()
@@ -220,37 +204,37 @@ class ProviderANIME:
 		media_type = media_type or self._media_type(media_dict)
 		anime_id = str(media_dict.get("id", ""))
 		norm_dict[Fields.PROVIDER] = "anime"
-		self.set_dict_key(norm_dict, Fields.TITLE, self._title(media_dict))
-		self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
+		set_dict_key(norm_dict, Fields.TITLE, self._title(media_dict))
+		set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
 		if media_type == "series":
-			self.set_dict_key(norm_dict, Fields.SERIES_ID, anime_id)
-		self.set_dict_key(norm_dict, Fields.COUNTRIES, media_dict.get("countryOfOrigin", ""))
-		self.set_dict_key(norm_dict, Fields.RELEASED, self._date(media_dict.get("startDate", {}) or {}))
-		self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(media_dict.get("genres", []) or []))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, self.html_to_text(media_dict.get("description", "")))
-		self.set_dict_key(norm_dict, Fields.RUNTIME, str(media_dict.get("duration", "") or media_dict.get("chapters", "") or media_dict.get("volumes", "")))
-		self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._score(media_dict))
-		self.set_dict_key(norm_dict, Fields.VOTE_COUNT, str(media_dict.get("popularity", "") or ""))
-		self.set_dict_key(norm_dict, Fields.COVER_URL, self._get(media_dict, ("coverImage", "extraLarge")) or self._get(media_dict, ("coverImage", "large")))
-		self.set_dict_key(norm_dict, Fields.COVER_SRC, media_type)
-		self.set_dict_key(norm_dict, Fields.BACKDROP_URL, media_dict.get("bannerImage", ""))
-		self.set_dict_key(norm_dict, Fields.BACKDROP_SRC, media_type)
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
-		self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"anime": anime_id, "anilist": anime_id})
+			set_dict_key(norm_dict, Fields.SERIES_ID, anime_id)
+		set_dict_key(norm_dict, Fields.COUNTRIES, media_dict.get("countryOfOrigin", ""))
+		set_dict_key(norm_dict, Fields.RELEASED, self._date(media_dict.get("startDate", {}) or {}))
+		set_dict_key(norm_dict, Fields.GENRES, ", ".join(media_dict.get("genres", []) or []))
+		set_dict_key(norm_dict, Fields.OVERVIEW, html_to_text(media_dict.get("description", "")))
+		set_dict_key(norm_dict, Fields.RUNTIME, str(media_dict.get("duration", "") or media_dict.get("chapters", "") or media_dict.get("volumes", "")))
+		set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._score(media_dict))
+		set_dict_key(norm_dict, Fields.VOTE_COUNT, str(media_dict.get("popularity", "") or ""))
+		set_dict_key(norm_dict, Fields.COVER_URL, self._get(media_dict, ("coverImage", "extraLarge")) or self._get(media_dict, ("coverImage", "large")))
+		set_dict_key(norm_dict, Fields.COVER_SRC, media_type)
+		set_dict_key(norm_dict, Fields.BACKDROP_URL, media_dict.get("bannerImage", ""))
+		set_dict_key(norm_dict, Fields.BACKDROP_SRC, media_type)
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"anime": anime_id, "anilist": anime_id})
 		if details:
 			crew_list, cast_list = self.get_characters(media_dict)
-			self.set_dict_key(norm_dict, Fields.CREW, crew_list)
-			self.set_dict_key(norm_dict, Fields.CAST, cast_list)
+			set_dict_key(norm_dict, Fields.CREW, crew_list)
+			set_dict_key(norm_dict, Fields.CAST, cast_list)
 			if media_type == "series":
 				season_dict = {}
-				self.set_dict_key(season_dict, Fields.PROVIDER, "anime")
-				self.set_dict_key(season_dict, Fields.SERIES_ID, anime_id)
-				self.set_dict_key(season_dict, Fields.SEASON_NAME, "Season 1")
-				self.set_dict_key(season_dict, Fields.SEASON_NO, "1")
-				self.set_dict_key(season_dict, Fields.RELEASED, self._date(media_dict.get("startDate", {}) or {}))
-				self.set_dict_key(season_dict, Fields.COVER_URL, norm_dict.get(Fields.COVER_URL, ""))
-				self.set_dict_key(season_dict, Fields.COVER_SRC, "season")
-				self.set_dict_key(norm_dict, Fields.SEASONS, [season_dict])
+				set_dict_key(season_dict, Fields.PROVIDER, "anime")
+				set_dict_key(season_dict, Fields.SERIES_ID, anime_id)
+				set_dict_key(season_dict, Fields.SEASON_NAME, "Season 1")
+				set_dict_key(season_dict, Fields.SEASON_NO, "1")
+				set_dict_key(season_dict, Fields.RELEASED, self._date(media_dict.get("startDate", {}) or {}))
+				set_dict_key(season_dict, Fields.COVER_URL, norm_dict.get(Fields.COVER_URL, ""))
+				set_dict_key(season_dict, Fields.COVER_SRC, "season")
+				set_dict_key(norm_dict, Fields.SEASONS, [season_dict])
 		return norm_dict
 
 	def get_characters(self, media_dict):
@@ -258,20 +242,20 @@ class ProviderANIME:
 		for edge in self._get(media_dict, ("characters", "edges"), []) or []:
 			node = edge.get("node", {}) or {}
 			staff_dict = {}
-			self.set_dict_key(staff_dict, Fields.JOB, "Actor")
-			self.set_dict_key(staff_dict, Fields.NAME, self._get(node, ("name", "full")) or self._get(node, ("name", "userPreferred")))
-			self.set_dict_key(staff_dict, Fields.CHARACTER, str(edge.get("role", "") or ""))
-			self.set_dict_key(staff_dict, Fields.PROFILE_ID, str(node.get("id", "")))
-			self.set_dict_key(staff_dict, Fields.PROFILE_URL, self._get(node, ("image", "large")))
+			set_dict_key(staff_dict, Fields.JOB, "Actor")
+			set_dict_key(staff_dict, Fields.NAME, self._get(node, ("name", "full")) or self._get(node, ("name", "userPreferred")))
+			set_dict_key(staff_dict, Fields.CHARACTER, str(edge.get("role", "") or ""))
+			set_dict_key(staff_dict, Fields.PROFILE_ID, str(node.get("id", "")))
+			set_dict_key(staff_dict, Fields.PROFILE_URL, self._get(node, ("image", "large")))
 			if staff_dict:
 				cast_list.append(staff_dict)
 		for edge in self._get(media_dict, ("staff", "edges"), []) or []:
 			node = edge.get("node", {}) or {}
 			staff_dict = {}
-			self.set_dict_key(staff_dict, Fields.JOB, edge.get("role", "Staff"))
-			self.set_dict_key(staff_dict, Fields.NAME, self._get(node, ("name", "full")) or self._get(node, ("name", "userPreferred")))
-			self.set_dict_key(staff_dict, Fields.PROFILE_ID, str(node.get("id", "")))
-			self.set_dict_key(staff_dict, Fields.PROFILE_URL, self._get(node, ("image", "large")))
+			set_dict_key(staff_dict, Fields.JOB, edge.get("role", "Staff"))
+			set_dict_key(staff_dict, Fields.NAME, self._get(node, ("name", "full")) or self._get(node, ("name", "userPreferred")))
+			set_dict_key(staff_dict, Fields.PROFILE_ID, str(node.get("id", "")))
+			set_dict_key(staff_dict, Fields.PROFILE_URL, self._get(node, ("image", "large")))
 			if staff_dict:
 				crew_list.append(staff_dict)
 		return crew_list, cast_list
@@ -392,13 +376,6 @@ query ($id: Int, $type: MediaType) {
 			json_obj = json_obj[key]
 		return json_obj if json_obj is not None else default
 
-	def html_to_text(self, html):
-		if not html:
-			return ""
-		if isinstance(html, bytes):
-			html = html.decode("utf-8", "replace")
-		return unescape(sub(r"<br\s*/?>", "\n", sub(r"<.*?>", "", html))).strip()
-
 	def get_api_dicts(self, query, variables=None, timeout=(3.05, 8)):
 		try:
 			variables = variables or {}
@@ -411,11 +388,6 @@ query ($id: Int, $type: MediaType) {
 			return err_msg, {}
 		except ValueError as err_msg:
 			return err_msg, {}
-
-	def set_dict_key(self, dictionary, key, value):
-		if value and value != "N/A":
-			dictionary[key] = value
-
 
 provider_anime = ProviderANIME()
 

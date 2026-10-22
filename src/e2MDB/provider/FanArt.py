@@ -15,13 +15,13 @@ from requests import get, exceptions
 from sys import exit, argv
 
 try:
-    from .Consts import Fields
+    from .Common import Fields, set_dict_key
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+    from Common import Fields, set_dict_key
 
 try:
 	from .. import write_log
@@ -148,15 +148,15 @@ class ProviderFanArt:
 
 	def create_norm_artwork_dict(self, fanart_response, media_type="tv", fanart_id=""):
 		norm_dict = {}
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "fanart")
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(norm_dict, Fields.PROVIDER, "fanart")
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
 		if media_type == "tv":
-			self.set_dict_key(norm_dict, "tvdb_id", str(fanart_response.get("id", fanart_id)))
-			self.set_dict_key(norm_dict, "imdb_id", fanart_response.get("imdb_id", ""))
-			self.set_dict_key(norm_dict, "tmdb_id", str(fanart_response.get("tmdb_id", "")))
+			set_dict_key(norm_dict, "tvdb_id", str(fanart_response.get("id", fanart_id)))
+			set_dict_key(norm_dict, "imdb_id", fanart_response.get("imdb_id", ""))
+			set_dict_key(norm_dict, "tmdb_id", str(fanart_response.get("tmdb_id", "")))
 		else:
-			self.set_dict_key(norm_dict, "tmdb_id", str(fanart_response.get("id", fanart_id)))
-			self.set_dict_key(norm_dict, "imdb_id", fanart_response.get("imdb_id", ""))
+			set_dict_key(norm_dict, "tmdb_id", str(fanart_response.get("id", fanart_id)))
+			set_dict_key(norm_dict, "imdb_id", fanart_response.get("imdb_id", ""))
 
 		artwork = {
 			"posters": [],
@@ -201,23 +201,23 @@ class ProviderFanArt:
 			add_items("discs", "moviedisc", "disc")
 
 		artwork = {key: value for key, value in artwork.items() if value}
-		self.set_dict_key(norm_dict, "artwork", artwork)
+		set_dict_key(norm_dict, "artwork", artwork)
 		return norm_dict
 
 	def _normalize_artwork_item(self, item, artwork_type, fanart_id, media_type, source_key):
 		normalized = {}
 		url = self._normalize_artwork_url(item.get("url", ""), fanart_id, media_type, source_key)
-		self.set_dict_key(normalized, "url", url)
-		self.set_dict_key(normalized, "lang", item.get("lang", ""))
-		self.set_dict_key(normalized, "likes", str(item.get("likes", 0)))
-		self.set_dict_key(normalized, "artworkType", artwork_type)
-		self.set_dict_key(normalized, "sourceKey", source_key)
-		self.set_dict_key(normalized, "width", str(item.get("width", "")))
-		self.set_dict_key(normalized, "height", str(item.get("height", "")))
+		set_dict_key(normalized, "url", url)
+		set_dict_key(normalized, "lang", item.get("lang", ""))
+		set_dict_key(normalized, "likes", str(item.get("likes", 0)))
+		set_dict_key(normalized, "artworkType", artwork_type)
+		set_dict_key(normalized, "sourceKey", source_key)
+		set_dict_key(normalized, "width", str(item.get("width", "")))
+		set_dict_key(normalized, "height", str(item.get("height", "")))
 		if artwork_type in ("season_poster", "season_thumb", "season_banner"):
-			self.set_dict_key(normalized, "season", str(item.get("season", "")))
+			set_dict_key(normalized, "season", str(item.get("season", "")))
 		if artwork_type == "character":
-			self.set_dict_key(normalized, "character_name", item.get("name", ""))
+			set_dict_key(normalized, "character_name", item.get("name", ""))
 		return normalized
 
 	def _normalize_artwork_url(self, raw_url, fanart_id, media_type, source_key):
@@ -310,11 +310,6 @@ class ProviderFanArt:
 			except (exceptions.RequestException, ValueError) as err_msg:
 				return str(err_msg), {}
 		return last_error or "API server access ERROR", {}
-
-	def set_dict_key(self, dictionary, key, value):
-		if value:
-			dictionary[key] = value
-
 
 provider_fanart = ProviderFanArt()
 

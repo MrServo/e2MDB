@@ -20,25 +20,17 @@ from E2MDBDatabase import mediadb
 from MediaNameParser import MediaNameParser
 from E2MDBRecordingParser import parse_recording as default_parse_recording
 from E2MDBIgnoreConfig import E2MDBIgnorePatterns
+from provider.Common import EPGTYPE_SEPAS, EXCLUDED_DIRS, FOREIGN_SEPAS, VIDEO_EXTS, guess_separator, safe_int
 
 
 class E2MDBBackendMetadataScanner:
 	"""Backend-safe metadata scanner facade used by e2mdbd.
-
 	All daemon recording/media scans must enter through this class so path
 	filtering, TS META/EIT/CUTS parsing and MediaNameParser handling stay in the
 	same module as the historical v16 scanner logic.  The daemon only orchestrates
 	jobs and stores the returned scan items.
 	"""
-
-	TS_RECORDING_EXTS = (".ts", ".stream")
-	MEDIA_FILE_EXTS = (".mkv", ".avi", ".mp4", ".m4v", ".mpg", ".mpeg", ".mov", ".wmv", ".flv", ".iso", ".m2ts", ".mts")
-	VIDEO_EXTS = TS_RECORDING_EXTS + MEDIA_FILE_EXTS  # TODO: sollte man zusammenfassen
 	NON_MEDIA_SIDECAR_EXTS = (".meta", ".eit", ".cuts", ".cutsr", ".ap", ".sc", ".txt", ".nfo", ".srt", ".sub", ".idx", ".jpg", ".jpeg", ".png", ".gif", ".log", ".tmp", ".part")
-	EXCLUDED_SCAN_DIRS = ("__pycache__", ".Trash", ".Trash-1000", "trash", "Trash", "trashcan", ".trashcan", "@eaDir", "lost+found")
-	EPGTYPE_SEPAS = (("_", ""), (": ", ""), (" – ", ""), (" - ", ""), ("! ", "! "), ("|", "|"))
-	FOREIGN_SEPAS = (("_", ""), (": ", ""), (" – ", ""), (" - ", ""), ("! ", "! "))
-
 	season_keys = [
 #		_("season"),  # localized
 		"staffel",  # DE
@@ -182,12 +174,6 @@ class E2MDBBackendMetadataScanner:
 			self.mediadb_error = str(err)
 			return {"success": False, "error": str(err)}
 
-	def safe_int(self, value, default=0):
-		try:
-			return int(value)
-		except Exception:
-			return default
-
 	def iso_from_timestamp(self, value):
 		try:
 			dt_str = datetime.fromtimestamp(value).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -202,7 +188,7 @@ class E2MDBBackendMetadataScanner:
 		name = basename(str(path or ""))
 		if not name or name.startswith("."):
 			return False
-		return self.media_extension(path) in self.VIDEO_EXTS
+		return self.media_extension(path) in VIDEO_EXTS
 
 	def parse_sidecar_infos(self, path):  # parse each recording only once per scan step
 		if self.last_parsed[0] != path:
@@ -216,8 +202,7 @@ class E2MDBBackendMetadataScanner:
 		return str(self.parse_sidecar_infos(path).get("title", "")).strip()
 
 	def clean_title_from_filename(self, path):
-		name = splitext(basename(path))[0]
-		name = sub(r"[._]+", " ", name)
+		name = splitext(basename(path))[0].replace(".", " ")
 		name = sub(r"\s+", " ", name).strip()
 		return name or basename(path)
 
@@ -252,7 +237,7 @@ class E2MDBBackendMetadataScanner:
 		return md5(reduced.encode("utf-8", "replace")).hexdigest()
 
 	def mode_family_from_path_mode(self, mode):
-		mode = self.safe_int(mode, 0)
+		mode = safe_int(mode, 0)
 		return {
 			1: "movie",
 			2: "series",
@@ -264,7 +249,7 @@ class E2MDBBackendMetadataScanner:
 		}.get(mode, "")
 
 	def path_mode_label(self, mode):
-		mode = self.safe_int(mode, 0)
+		mode = safe_int(mode, 0)
 		return {
 			0: "exclude",
 			1: "movie",
@@ -285,7 +270,7 @@ class E2MDBBackendMetadataScanner:
 		):
 			match = search(pattern, text)
 			if match:
-				return self.safe_int(match.group(1), 0), self.safe_int(match.group(2), 0)
+				return safe_int(match.group(1), 0), safe_int(match.group(2), 0)
 		return 0, 0
 
 	def clean_series_title(self, value):
@@ -301,11 +286,6 @@ class E2MDBBackendMetadataScanner:
 				break
 		text = sub(r"(?i)\b(german|english|multi|dubbed|subbed|720p|1080p|2160p|web|webrip|web-dl|hdtv|bluray|x264|x265|h264|h265|hevc|ac3|dts)\b.*$", "", text)
 		return sub(r"\s+", " ", text).strip(" -_.")
-
-	def guess_separator(self, title, separators):
-		char_counts = [(separator, replacement, title.count(separator)) for separator, replacement in separators]
-		count_list = [item for item in char_counts if item[2]]
-		return min(count_list, key=lambda item: item[2])[:2] if count_list else ("", "")
 
 	def guess_category(self, org_title, org_path, desc="", short_desc=""):  # don't use 'ext_desc', it might lead to incorrect results
 		# all available data (title + metadata except 'ext_desc') are examined for attributes:
@@ -445,12 +425,12 @@ class E2MDBBackendMetadataScanner:
 			5: "manga_series",
 			6: "anime_movie",
 			7: "manga_movie"
-			}.get(self.safe_int(path_mode, 0), "")
+			}.get(safe_int(path_mode, 0), "")
 		return media_type
 
 	def recording_name_info_from_clean_title(self, clean_title, path_mode=0):
 		clean_title = str(clean_title or "").strip()
-		path_mode = self.safe_int(path_mode, 0)
+		path_mode = safe_int(path_mode, 0)
 		season_no, episode_no = self.parse_season_episode_text(clean_title)
 		if season_no or episode_no:
 			series_title = self.clean_series_title(clean_title)
@@ -492,10 +472,10 @@ class E2MDBBackendMetadataScanner:
 		return {
 			"success": bool(getattr(parsed, "success", False)),
 			"series_name": getattr(parsed, "series_name", ""),
-			"season_number": self.safe_int(getattr(parsed, "season_number", 0), 0),
-			"episode_number": self.safe_int(getattr(parsed, "episode_number", 0), 0),
-			"ending_episode_number": self.safe_int(getattr(parsed, "ending_episode_number", 0), 0),
-			"year": self.safe_int(getattr(parsed, "year", 0), 0),
+			"season_number": safe_int(getattr(parsed, "season_number", 0), 0),
+			"episode_number": safe_int(getattr(parsed, "episode_number", 0), 0),
+			"ending_episode_number": safe_int(getattr(parsed, "ending_episode_number", 0), 0),
+			"year": safe_int(getattr(parsed, "year", 0), 0),
 			"is_by_date": bool(getattr(parsed, "is_by_date", False)),
 			"container": getattr(parsed, "container", "")
 		}
@@ -506,12 +486,12 @@ class E2MDBBackendMetadataScanner:
 		return {
 			"success": bool(getattr(parsed, "success", False)),
 			"movie_name": getattr(parsed, "movie_name", ""),
-			"year": self.safe_int(getattr(parsed, "year", 0), 0),
+			"year": safe_int(getattr(parsed, "year", 0), 0),
 			"container": getattr(parsed, "container", "")
 		}
 
 	def parse_media_name_for_scan(self, media_path, path_item, fallback_title=""):
-		mode = self.safe_int(path_item.get("mode", 0), 0) if isinstance(path_item, dict) else 0
+		mode = safe_int(path_item.get("mode", 0), 0) if isinstance(path_item, dict) else 0
 		root_path = path_item.get("path", "") if isinstance(path_item, dict) else ""
 		parser_media_path = self.parser_path_for_recording(media_path)
 		result = {
@@ -535,16 +515,16 @@ class E2MDBBackendMetadataScanner:
 				result["episode"] = self._parser_dict_from_episode(parsed_ep)
 				if getattr(parsed_ep, "success", False):
 					result["series_title"] = getattr(parsed_ep, "series_name", "")
-					result["season_no"] = self.safe_int(getattr(parsed_ep, "season_number", 0), 0)
-					result["episode_no"] = self.safe_int(getattr(parsed_ep, "episode_number", 0), 0)
-					result["year"] = self.safe_int(getattr(parsed_ep, "year", 0), 0)
+					result["season_no"] = safe_int(getattr(parsed_ep, "season_number", 0), 0)
+					result["episode_no"] = safe_int(getattr(parsed_ep, "episode_number", 0), 0)
+					result["year"] = safe_int(getattr(parsed_ep, "year", 0), 0)
 					return result
 			if mode in (1, 6, 7):  # is a user declared 'movie folder'
 				parsed_movie = self.media_name_parser(library_path=root_path, mode=1, ignored_folders=self.ignored_folder_names).parse_movie(parser_media_path)
 				result["movie"] = self._parser_dict_from_movie(parsed_movie)
 				if getattr(parsed_movie, "success", False):
 					result["movie_title"] = getattr(parsed_movie, "movie_name", "")
-					result["year"] = self.safe_int(getattr(parsed_movie, "year", 0), 0)
+					result["year"] = safe_int(getattr(parsed_movie, "year", 0), 0)
 					return result
 			# no results or is a user declared 'multi folder'
 			if not parsed_ep:
@@ -554,9 +534,9 @@ class E2MDBBackendMetadataScanner:
 			if getattr(parsed_ep, "success", False) and series_name:
 				result["media_type"] = "series"
 				result["series_title"] = series_name
-				result["season_no"] = self.safe_int(getattr(parsed_ep, "season_number", 0), 0)
-				result["episode_no"] = self.safe_int(getattr(parsed_ep, "episode_number", 0), 0)
-				result["year"] = self.safe_int(getattr(parsed_ep, "year", 0), 0)
+				result["season_no"] = safe_int(getattr(parsed_ep, "season_number", 0), 0)
+				result["episode_no"] = safe_int(getattr(parsed_ep, "episode_number", 0), 0)
+				result["year"] = safe_int(getattr(parsed_ep, "year", 0), 0)
 				return result
 			if not parsed_movie:
 				parsed_movie = self.media_name_parser(library_path=root_path, mode=1, ignored_folders=self.ignored_folder_names).parse_movie(parser_media_path)
@@ -565,7 +545,7 @@ class E2MDBBackendMetadataScanner:
 			if getattr(parsed_movie, "success", False) and movie_name:
 				result["media_type"] = "movie"
 				result["movie_title"] = movie_name
-				result["year"] = self.safe_int(getattr(parsed_movie, "year", 0), 0)
+				result["year"] = safe_int(getattr(parsed_movie, "year", 0), 0)
 		except Exception as err:
 			result["parser_error"] = str(err)
 		return result
@@ -576,7 +556,7 @@ class E2MDBBackendMetadataScanner:
 			est_media_type, search_title, match_reason = "series", ep_details.series_name, self.get_se_ep(ep_details)
 		else:
 			source_title = str(org_title or "").strip()
-			if self.media_extension(source_title) in self.VIDEO_EXTS:
+			if self.media_extension(source_title) in VIDEO_EXTS:
 				source_title = splitext(source_title)[0].strip()
 			est_media_type, search_title, match_reason = self.guess_category(source_title, org_path)
 			clean_match = match_reason.replace("(", "").replace(")", "")
@@ -585,62 +565,66 @@ class E2MDBBackendMetadataScanner:
 			if search_title:
 				if self.has_sidecar_infos(org_path):  # treatment for recordings with sidecar infos (e.G. from EIT)
 					if sc_title := self.get_sidecar_title(org_path):
-						separator, replacement = self.guess_separator(sc_title, self.EPGTYPE_SEPAS)
+						separator, replacement = guess_separator(sc_title, EPGTYPE_SEPAS)
 						if separator:
 							search_title, new_desc = self.divide_file_base_infos(sc_title, separator)
 				else:  # treatment for foreign recordings (e.g. '.mp4', '.mkv', '.avi', etc.)
 					search_title = search_title.replace(".", " ")
-					separator, replacement = self.guess_separator(source_title, self.FOREIGN_SEPAS)
+					separator, replacement = guess_separator(source_title, FOREIGN_SEPAS)
 					if separator:
 						search_title, new_desc = self.divide_file_base_infos(source_title, separator)
 						search_title = search_title.replace(".", " ")
 		return search_title, new_desc, est_media_type, match_reason
 
-	def create_search_titles(self, org_title, org_path, quickscan=True, ep_details=None):  # create titles alternatives
+	def create_search_titles(self, org_title, org_path):  # create titles alternatives
 		search_titles, episode_title = [], ""
-		if ep_details and ep_details.success:
-			est_media_type, search_title, match_reason = "series", ep_details.series_name, self.get_se_ep(ep_details)
-			year = ""
-			search_titles.append((search_title, year))  # first search string for parsed episode details
+		est_media_type, search_title, match_reason = self.guess_category(org_title, org_path)
+		search_titles.append((org_title, ""))  # first search string shall be original
+		search_title, new_desc, m_type, m_reason = self.create_best_search(org_title, org_path)
+		est_media_type = est_media_type or m_type
+		match_reason = match_reason or m_reason
+		clean_match = match_reason.strip("(").strip(")")  # cleans e.g. '(2019)' but leave 'S02E03'
+		if est_media_type == "series":
+			episode_title, year = ("", clean_match) if clean_match.isdigit() else (clean_match, "")
 		else:
-			est_media_type, search_title, match_reason = self.guess_category(org_title, org_path)
-			search_title, new_desc, m_type, m_reason = self.create_best_search(org_title, org_path)
-			est_media_type = est_media_type or m_type
-			match_reason = match_reason or m_reason
-			clean_match = match_reason.strip("(").strip(")")  # clean e.g. '(2019)' but leave 'S02E03'
-			if est_media_type == "series":
-				episode_title, year = ("", clean_match) if clean_match.isdigit() else (clean_match, "")
-			else:
-				episode_title, year = new_desc, clean_match
-			search_titles.append((search_title, year))  # first search string
-			if self.has_sidecar_infos(org_path):  # treatment for recordings with additional infos (e.G. EIT)
-				for separator, replacement in self.EPGTYPE_SEPAS:  # create alternatives acc. EPG separators
+			episode_title, year = (new_desc, clean_match)
+		if year:
+			search_titles.append((sub(r"\s*\(\d{4}\)", "", org_title).strip(), year))  # first main search with org_title
+			search_titles.append((org_title, year))  # second main search using the year-adjusted org_title
+		search_titles.append((search_title, year))  # first search variation
+		if self.has_sidecar_infos(org_path):  # treatment for recordings with additional infos (e.g. EIT)
+			for separator, replacement in EPGTYPE_SEPAS:  # create alternatives acc. EPG separators
+				if separator in org_title:
+					div_title, desc = self.divide_file_base_infos(org_title, separator)
+					search_titles.append((f"{div_title}{replacement.strip()}", year))  # create variation like 'Wunderbar!'
+					search_titles.append((div_title, year))  # create variation like 'Wunderbar'
+		else:  # treatment for recordings without additional infos (e.g. EIT)
+			for separator, replacement in FOREIGN_SEPAS:  # create alternatives acc. foreign separators
 					if separator in org_title:
 						div_title, desc = self.divide_file_base_infos(org_title, separator)
-						search_titles.append((f"{div_title}{replacement.strip()}", year))  # create variations
+						search_titles.append((f"{div_title}{replacement.rstrip()}", year))  # create variations
 						search_titles.append((div_title, year))
-			else:  # treatment for foreign recordings (e.g. '.mp4', '.mkv', , '.avi', etc.)
-				if not quickscan:
-					for separator, replacement in self.FOREIGN_SEPAS:  # create alternatives acc. foreign separators
-							if separator in org_title:
-								div_title, desc = self.divide_file_base_infos(org_title, separator)
-								search_titles.append((f"{div_title}{replacement.rstrip()}", year))  # create variations
-								search_titles.append((div_title, year))
-			search_titles = list(dict.fromkeys(search_titles[:]).keys())  # remove all duplicates from list
+		search_titles = list(dict.fromkeys(search_titles[:]).keys())  # remove all duplicates from list
 		return search_titles, episode_title  # e.g. [('Wunderschön', ''), ('Wunderschön!', '')], 'Vom Mont Blanc ins Aostatal'
 
-	def unique_list(self, items):
-		result = []
-		seen = set()
+	def unique_str_list(self, items):  # remove duplicate strings case-insensitive, e.g. ["Hallo", "hallo"] -> [Hallo]
+		result, seen = [], set()
 		for item in items:
-			text = str(item or "").strip()
-			if not text:
+			if not (text := str(item or "").strip()):
 				continue
-			key = text.lower()
-			if key in seen:
+			if (key := text.lower()) in seen:
 				continue
 			seen.add(key)
 			result.append(text)
+		return result
+
+	def unique_tuples_list(self, items):  # remove duplicates tuples case-insensitive, e.g. [(("Hallo", ""), "hallo", "")] -> [("Hallo", "")]
+		result, seen = [], set()
+		for item in items:
+			key = tuple(value.strip().casefold() if isinstance(value, str) else value for value in item)
+			if key not in seen:
+				seen.add(key)
+				result.append(item)
 		return result
 
 	def scan_path_diagnostics(self, scan_paths, count_files=False, checkpoint=None):
@@ -667,7 +651,7 @@ class E2MDBBackendMetadataScanner:
 				except Exception:
 					pass
 			path = item.get("path", "") if isinstance(item, dict) else str(item or "")
-			mode = self.safe_int(item.get("mode", 0), 0) if isinstance(item, dict) else 0
+			mode = safe_int(item.get("mode", 0), 0) if isinstance(item, dict) else 0
 			recursive = bool(item.get("recursive", True)) if isinstance(item, dict) else True
 			entry = {
 				"path": path,
@@ -706,7 +690,7 @@ class E2MDBBackendMetadataScanner:
 								checkpoint()
 							except Exception:
 								pass
-						dirs[:] = [name for name in dirs if name not in self.EXCLUDED_SCAN_DIRS and not name.startswith(".")]
+						dirs[:] = [name for name in dirs if name not in EXCLUDED_DIRS and not name.startswith(".")]
 						for filename in files:
 							full_path = join(root, filename)
 							if self.is_known_media_file(full_path):
@@ -751,7 +735,7 @@ class E2MDBBackendMetadataScanner:
 						checkpoint()
 					except Exception:
 						pass
-				dirs[:] = [name for name in dirs if name not in self.EXCLUDED_SCAN_DIRS and not name.startswith(".")]
+				dirs[:] = [name for name in dirs if name not in EXCLUDED_DIRS and not name.startswith(".")]
 				for filename in files:
 					media_path = join(root, filename)
 					if self.is_known_media_file(media_path):
@@ -787,16 +771,14 @@ class E2MDBBackendMetadataScanner:
 		from os.path import getmtime, getsize
 		has_sidecar_infos = self.has_sidecar_infos(media_path)
 		filename_title = self.clean_openatv_recording_title(media_path) if has_sidecar_infos else self.clean_title_from_filename(media_path)
-		if sc_title := self.get_sidecar_title(media_path):
-			sc_title = self.clean_openatv_recording_title(sc_title).strip()
-		title = sc_title or filename_title or basename(media_path).strip()
-		short = sc_parsed.get("short_desc", "") or sc_parsed.get("short_desc", "").strip()
-		extended = (sc_parsed.get("extended_desc", "") or sc_parsed.get("extended_desc", "") or short).strip()
+		if sc_title := self.get_sidecar_title(media_path):  # has sidecar title?
+			sc_title = self.clean_openatv_recording_title(sc_title).strip()  # then clean and use it
+		title = sc_title or filename_title
 		size_bytes = getsize(media_path) if isfile(media_path) else 0
-		mtime = self.safe_int(getmtime(media_path), 0) if isfile(media_path) else 0
-		recorded_at = self.safe_int(sc_parsed.get("recorded_at"), 0)
-		duration_seconds = self.safe_int(sc_parsed.get("duration_seconds"), 0)
-		path_mode = self.safe_int(path_item.get("mode", 0), 0)
+		mtime = safe_int(getmtime(media_path), 0) if isfile(media_path) else 0
+		recorded_at = safe_int(sc_parsed.get("recorded_at"), 0)
+		duration_seconds = safe_int(sc_parsed.get("duration_seconds"), 0)
+		path_mode = safe_int(path_item.get("mode", 0), 0)
 		name_info = self.parse_media_name_for_scan(media_path, path_item, title)
 		if has_sidecar_infos:
 			filename_info = self.recording_name_info_from_clean_title(filename_title, path_mode)
@@ -805,45 +787,48 @@ class E2MDBBackendMetadataScanner:
 					if key not in name_info or not name_info.get(key):
 						name_info[key] = value
 		estimated_media_type = name_info.get("media_type", "") or self.media_type_from_path_mode(path_mode, title=title, path=media_path)
-		special_media_type = self.resolve_special_media_type(media_path)
-		if special_media_type:
-			estimated_media_type = special_media_type
-		season_no = self.safe_int(name_info.get("season_no"), 0)
-		episode_no = self.safe_int(name_info.get("episode_no"), 0)
-		raw_title = ""
-		separator = ""
-		split_desc = ""
+		if special_media_type := self.resolve_special_media_type(media_path):  # is a special mediatype?
+			estimated_media_type = special_media_type  # then use it
+		season_no = safe_int(name_info.get("season_no"), 0)
+		episode_no = safe_int(name_info.get("episode_no"), 0)
+		separator, split_desc = "", ""
+		sc_short_desc = sc_parsed.get("short_desc", "").strip()
+		sc_extended = sc_parsed.get("extended_desc", "").strip()
 		if not season_no and not episode_no:
 			# No explicit S/E marker to match an episode by name against the provider's episode index
 			# split the raw title on a guessed separator instead (e.g. "Show_Episode.mp4" -> "Show" + "Episode"),
-			season_no, episode_no = self.parse_season_episode_text(" ".join([media_path, title, short]))
-			if has_sidecar_infos:
-				raw_title = sc_parsed.get("title", "").strip() or title
-			else:
-				raw_title = splitext(basename(media_path))[0]
-			separators = self.EPGTYPE_SEPAS if has_sidecar_infos else self.FOREIGN_SEPAS
-			separator, replacement = self.guess_separator(raw_title, separators)
+			season_no, episode_no = self.parse_season_episode_text(" ".join([media_path, title, sc_short_desc]))
+			separator, replacement = guess_separator(title, EPGTYPE_SEPAS if has_sidecar_infos else FOREIGN_SEPAS)
 			if separator:
-				split_title, split_desc = self.divide_file_base_infos(raw_title, separator)
+				split_title, split_desc = self.divide_file_base_infos(title, separator)
 				if split_desc:
-					extended = extended or split_desc
 					if not name_info.get("series_title"):
 						name_info["series_title"] = f"{split_title}{replacement.strip()}" if replacement else split_title
 		series_title = name_info.get("series_title", "").strip()
 		movie_title = name_info.get("movie_title", "").strip()
-		provider_title = series_title if estimated_media_type in ("series", "anime_series", "manga_series") and series_title else (movie_title or title)
-		if estimated_media_type in ("series", "anime_series", "manga_series") and not series_title:
-			series_title = self.clean_series_title(title or media_path)
-		search_candidates = self.unique_list((provider_title, series_title, movie_title, title, filename_title, short, extended))
-		if has_sidecar_infos:
-			sc_path = sc_parsed.get("path", "")
-			sc_title = sc_parsed.get("title", "")
-			if not sc_title:  # e.g. '/media/hdd/movie/20260118 2012 - ZDF HD - Wunderschön! Der Mont Blanc.ts' -> 'Wunderschön! Der Mont Blanc'
-				sc_title = splitext(basename(sc_path).split(" - ")[-1])[0]
-			search_candidates, episode_title = self.create_search_titles(sc_title, sc_path, quickscan=True, ep_details=None)
+		if estimated_media_type in ("series", "anime_series", "manga_series"):
+			if not series_title:
+				series_title = self.clean_series_title(title or media_path)
+			provider_title = series_title
 		else:
-			search_title = raw_title if separator and split_desc else (provider_title or title)
-			search_candidates, episode_title = self.create_search_titles(search_title, media_path, quickscan=True, ep_details=None)
+			provider_title = movie_title or title
+		if has_sidecar_infos:
+			sc_title, sc_path = sc_parsed.get("title", ""), sc_parsed.get("path", "")
+			if not sc_title:
+				# e.g. '/media/hdd/movie/20260118 2012 - ZDF HD - Wunderschön! Der Mont Blanc.ts' -> 'Wunderschön! Der Mont Blanc'
+				sc_title = splitext(basename(sc_path).split(" - ")[-1])[0]
+			search_candidates, episode_title = self.create_search_titles(sc_title, sc_path)
+		else:
+			search_title = filename_title if separator and split_desc else (provider_title or title)
+			search_candidates, episode_title = self.create_search_titles(search_title, media_path)
+#		main_title, episode_title = self.create_search_titles(filename_title, media_path)
+		for search_title in self.unique_str_list((filename_title, provider_title, series_title, movie_title, title)):
+			search_titles, epi_title = self.create_search_titles(search_title, media_path)
+			if not episode_title:
+				episode_title = epi_title
+			search_candidates.extend(search_titles)
+		search_candidates = self.unique_tuples_list(search_candidates)  # remove duplicates case-insensitive
+		# e.g. search_candidates = [('Wunderschön', ''), ('Wunderschön!', '')], tuple = ("Title", f"{year (if available)}"))
 		scanner_used = "E2MDBBackendMetadataScanner.metadata_sidecar_parser" if has_sidecar_infos else "E2MDBBackendMetadataScanner.media_name_parser"
 		parse_error = sc_parsed.get("parse_error", "")
 		return {
@@ -863,7 +848,7 @@ class E2MDBBackendMetadataScanner:
 			"movie_title": movie_title,
 			"provider_title": provider_title,
 			"name_parser": name_info,
-			"year": self.safe_int(name_info.get("year"), 0),
+			"year": safe_int(name_info.get("year"), 0),
 			"season_no": season_no,
 			"episode_no": episode_no,
 			"path": media_path,
@@ -876,8 +861,8 @@ class E2MDBBackendMetadataScanner:
 			"mode": path_mode,
 			"recursive": bool(path_item.get("recursive", True)),
 			"title": title,
-			"short_desc": short,
-			"extended_desc": extended,
+			"short_desc": sc_short_desc,
+			"extended_desc": sc_extended,
 			"service_ref": sc_parsed.get("service_ref", ""),
 			"recorded_at": recorded_at,
 			"recorded_at_iso": self.iso_from_timestamp(recorded_at),

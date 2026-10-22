@@ -16,13 +16,13 @@ from urllib.parse import quote
 from requests import get, exceptions
 
 try:
-	from .Consts import Fields
+	from .Common import Fields, match_season_episode, set_dict_key
 except ImportError:
 	import sys
 	from pathlib import Path
 
 	sys.path.append(str(Path(__file__).resolve().parents[1]))
-	from Consts import Fields
+	from Common import Fields, match_season_episode, set_dict_key
 
 try:
 	from .. import write_log
@@ -78,21 +78,21 @@ class ProviderCINEMETA:
 					continue
 				imdb_id = str(item.get("imdb_id") or item.get("id") or "")
 				norm_dict = {}
-				self.set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
-				self.set_dict_key(norm_dict, Fields.TITLE, item.get("name", ""))
-				self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
-				self.set_dict_key(norm_dict, Fields.RELEASED, item.get("releaseInfo") or item.get("released", ""))
-				self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(item.get("genre", []) or []))
-				self.set_dict_key(norm_dict, Fields.OVERVIEW, item.get("description", ""))
-				self.set_dict_key(norm_dict, Fields.RUNTIME, str(item.get("runtime", "")))
-				self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(item.get("imdbRating", "")))
-				self.set_dict_key(norm_dict, Fields.COVER_URL, item.get("poster", ""))
-				self.set_dict_key(norm_dict, Fields.BACKDROP_URL, item.get("background", ""))
-				self.set_dict_key(norm_dict, Fields.TITLELOGO_URL, item.get("logo", ""))
+				set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
+				set_dict_key(norm_dict, Fields.TITLE, item.get("name", ""))
+				set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
+				set_dict_key(norm_dict, Fields.RELEASED, item.get("releaseInfo") or item.get("released", ""))
+				set_dict_key(norm_dict, Fields.GENRES, ", ".join(item.get("genre", []) or []))
+				set_dict_key(norm_dict, Fields.OVERVIEW, item.get("description", ""))
+				set_dict_key(norm_dict, Fields.RUNTIME, str(item.get("runtime", "")))
+				set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(item.get("imdbRating", "")))
+				set_dict_key(norm_dict, Fields.COVER_URL, item.get("poster", ""))
+				set_dict_key(norm_dict, Fields.BACKDROP_URL, item.get("background", ""))
+				set_dict_key(norm_dict, Fields.TITLELOGO_URL, item.get("logo", ""))
 				if media_type == "series":
-					self.set_dict_key(norm_dict, Fields.SERIES_ID, imdb_id)
+					set_dict_key(norm_dict, Fields.SERIES_ID, imdb_id)
 				if imdb_id:
-					self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
+					set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
 				norm_dicts.append(norm_dict)
 			except Exception as err_msg:
 				write_log(f"{MODULE_NAME}ERROR in module 'create_norm_result_dicts': {err_msg}'")
@@ -114,24 +114,24 @@ class ProviderCINEMETA:
 		norm_dict = {}
 		if meta_dict:
 			imdb_id = str(meta_dict.get("imdb_id") or meta_dict.get("id") or "")
-			self.set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
-			self.set_dict_key(norm_dict, Fields.TITLE, meta_dict.get("name", ""))
-			self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, "movie")
-			self.set_dict_key(norm_dict, Fields.RELEASED, meta_dict.get("releaseInfo") or meta_dict.get("released", ""))
-			self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(meta_dict.get("genre", []) or meta_dict.get("genres", []) or []))
-			self.set_dict_key(norm_dict, Fields.OVERVIEW, meta_dict.get("description", ""))
-			self.set_dict_key(norm_dict, Fields.RUNTIME, str(meta_dict.get("runtime", "")))
-			self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(meta_dict.get("imdbRating", "")))
-			self.set_dict_key(norm_dict, Fields.COVER_URL, meta_dict.get("poster", ""))
-			self.set_dict_key(norm_dict, Fields.COVER_SRC, "movie")
-			self.set_dict_key(norm_dict, Fields.BACKDROP_URL, meta_dict.get("background", ""))
-			self.set_dict_key(norm_dict, Fields.BACKDROP_SRC, "movie")
-			self.set_dict_key(norm_dict, Fields.TITLELOGO_URL, meta_dict.get("logo", ""))
-			self.set_dict_key(norm_dict, Fields.CAST, self.get_cast(meta_dict))
-			self.set_dict_key(norm_dict, Fields.CREW, self.get_crew(meta_dict))
+			set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
+			set_dict_key(norm_dict, Fields.TITLE, meta_dict.get("name", ""))
+			set_dict_key(norm_dict, Fields.MEDIA_TYPE, "movie")
+			set_dict_key(norm_dict, Fields.RELEASED, meta_dict.get("releaseInfo") or meta_dict.get("released", ""))
+			set_dict_key(norm_dict, Fields.GENRES, ", ".join(meta_dict.get("genre", []) or meta_dict.get("genres", []) or []))
+			set_dict_key(norm_dict, Fields.OVERVIEW, meta_dict.get("description", ""))
+			set_dict_key(norm_dict, Fields.RUNTIME, str(meta_dict.get("runtime", "")))
+			set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(meta_dict.get("imdbRating", "")))
+			set_dict_key(norm_dict, Fields.COVER_URL, meta_dict.get("poster", ""))
+			set_dict_key(norm_dict, Fields.COVER_SRC, "movie")
+			set_dict_key(norm_dict, Fields.BACKDROP_URL, meta_dict.get("background", ""))
+			set_dict_key(norm_dict, Fields.BACKDROP_SRC, "movie")
+			set_dict_key(norm_dict, Fields.TITLELOGO_URL, meta_dict.get("logo", ""))
+			set_dict_key(norm_dict, Fields.CAST, self.get_cast(meta_dict))
+			set_dict_key(norm_dict, Fields.CREW, self.get_crew(meta_dict))
 			if imdb_id:
-				self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
-			self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+				set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
+			set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
 		return norm_dict
 
 	def get_series_details_index(self, series_id):
@@ -167,40 +167,40 @@ class ProviderCINEMETA:
 		norm_dict = {}
 		if meta_dict:
 			series_id = str(meta_dict.get("imdb_id") or meta_dict.get("id") or "")
-			self.set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
-			self.set_dict_key(norm_dict, Fields.TITLE, meta_dict.get("name", ""))
-			self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
-			self.set_dict_key(norm_dict, Fields.SERIES_ID, series_id)
-			self.set_dict_key(norm_dict, Fields.RELEASED, meta_dict.get("releaseInfo") or meta_dict.get("released", ""))
-			self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(meta_dict.get("genre", []) or meta_dict.get("genres", []) or []))
-			self.set_dict_key(norm_dict, Fields.OVERVIEW, meta_dict.get("description", ""))
-			self.set_dict_key(norm_dict, Fields.RUNTIME, str(meta_dict.get("runtime", "")))
-			self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(meta_dict.get("imdbRating", "")))
-			self.set_dict_key(norm_dict, Fields.COVER_URL, meta_dict.get("poster", ""))
-			self.set_dict_key(norm_dict, Fields.COVER_SRC, "series")
-			self.set_dict_key(norm_dict, Fields.BACKDROP_URL, meta_dict.get("background", ""))
-			self.set_dict_key(norm_dict, Fields.BACKDROP_SRC, "series")
-			self.set_dict_key(norm_dict, Fields.TITLELOGO_URL, meta_dict.get("logo", ""))
-			self.set_dict_key(norm_dict, Fields.TITLELOGO_SRC, "series")
-			self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+			set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
+			set_dict_key(norm_dict, Fields.TITLE, meta_dict.get("name", ""))
+			set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
+			set_dict_key(norm_dict, Fields.SERIES_ID, series_id)
+			set_dict_key(norm_dict, Fields.RELEASED, meta_dict.get("releaseInfo") or meta_dict.get("released", ""))
+			set_dict_key(norm_dict, Fields.GENRES, ", ".join(meta_dict.get("genre", []) or meta_dict.get("genres", []) or []))
+			set_dict_key(norm_dict, Fields.OVERVIEW, meta_dict.get("description", ""))
+			set_dict_key(norm_dict, Fields.RUNTIME, str(meta_dict.get("runtime", "")))
+			set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(meta_dict.get("imdbRating", "")))
+			set_dict_key(norm_dict, Fields.COVER_URL, meta_dict.get("poster", ""))
+			set_dict_key(norm_dict, Fields.COVER_SRC, "series")
+			set_dict_key(norm_dict, Fields.BACKDROP_URL, meta_dict.get("background", ""))
+			set_dict_key(norm_dict, Fields.BACKDROP_SRC, "series")
+			set_dict_key(norm_dict, Fields.TITLELOGO_URL, meta_dict.get("logo", ""))
+			set_dict_key(norm_dict, Fields.TITLELOGO_SRC, "series")
+			set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
 			provider_ids = {"imdb": series_id} if series_id else {}
 			if meta_dict.get("tvdb_id"):
 				provider_ids["tvdb"] = str(meta_dict.get("tvdb_id"))
 			if meta_dict.get("moviedb_id"):
 				provider_ids["tmdb"] = str(meta_dict.get("moviedb_id"))
-			self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, provider_ids)
-			self.set_dict_key(norm_dict, Fields.CAST, self.get_cast(meta_dict))
-			self.set_dict_key(norm_dict, Fields.CREW, self.get_crew(meta_dict))
+			set_dict_key(norm_dict, Fields.PROVIDER_IDS, provider_ids)
+			set_dict_key(norm_dict, Fields.CAST, self.get_cast(meta_dict))
+			set_dict_key(norm_dict, Fields.CREW, self.get_crew(meta_dict))
 			seasons = []
 			season_numbers = sorted({video.get("season") for video in meta_dict.get("videos", []) or [] if video.get("season") not in (None, "")})
 			for season_no in season_numbers:
 				season_dict = {}
-				self.set_dict_key(season_dict, Fields.PROVIDER, "cinemeta")
-				self.set_dict_key(season_dict, Fields.SERIES_ID, series_id)
-				self.set_dict_key(season_dict, Fields.SEASON_NAME, f"Season {season_no}")
-				self.set_dict_key(season_dict, Fields.SEASON_NO, str(season_no))
+				set_dict_key(season_dict, Fields.PROVIDER, "cinemeta")
+				set_dict_key(season_dict, Fields.SERIES_ID, series_id)
+				set_dict_key(season_dict, Fields.SEASON_NAME, f"Season {season_no}")
+				set_dict_key(season_dict, Fields.SEASON_NO, str(season_no))
 				seasons.append(season_dict)
-			self.set_dict_key(norm_dict, Fields.SEASONS, seasons)
+			set_dict_key(norm_dict, Fields.SEASONS, seasons)
 		return norm_dict
 
 	def get_season_details(self, series_dict, season_no):
@@ -236,18 +236,18 @@ class ProviderCINEMETA:
 	def create_norm_episode_dict(self, video_dict, series_id=""):
 		norm_dict = {}
 		if video_dict:
-			self.set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
-			self.set_dict_key(norm_dict, Fields.SERIES_ID, str(series_id or ""))
-			self.set_dict_key(norm_dict, Fields.EPISODE_NAME, video_dict.get("name", ""))
-			self.set_dict_key(norm_dict, Fields.EPISODE_ID, str(video_dict.get("id", "")))
-			self.set_dict_key(norm_dict, Fields.SEASON_NO, str(video_dict.get("season", "")))
-			self.set_dict_key(norm_dict, Fields.EPISODE_NO, str(video_dict.get("number", video_dict.get("episode", ""))))
-			self.set_dict_key(norm_dict, Fields.RELEASED, video_dict.get("released") or video_dict.get("firstAired", ""))
-			self.set_dict_key(norm_dict, Fields.OVERVIEW, video_dict.get("overview") or video_dict.get("description", ""))
-			self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(video_dict.get("rating", "") or ""))
-			self.set_dict_key(norm_dict, "image_url", video_dict.get("thumbnail", ""))
-			self.set_dict_key(norm_dict, "image_src", "episode")
-			self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+			set_dict_key(norm_dict, Fields.PROVIDER, "cinemeta")
+			set_dict_key(norm_dict, Fields.SERIES_ID, str(series_id or ""))
+			set_dict_key(norm_dict, Fields.EPISODE_NAME, video_dict.get("name", ""))
+			set_dict_key(norm_dict, Fields.EPISODE_ID, str(video_dict.get("id", "")))
+			set_dict_key(norm_dict, Fields.SEASON_NO, str(video_dict.get("season", "")))
+			set_dict_key(norm_dict, Fields.EPISODE_NO, str(video_dict.get("number", video_dict.get("episode", ""))))
+			set_dict_key(norm_dict, Fields.RELEASED, video_dict.get("released") or video_dict.get("firstAired", ""))
+			set_dict_key(norm_dict, Fields.OVERVIEW, video_dict.get("overview") or video_dict.get("description", ""))
+			set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(video_dict.get("rating", "") or ""))
+			set_dict_key(norm_dict, "image_url", video_dict.get("thumbnail", ""))
+			set_dict_key(norm_dict, "image_src", "episode")
+			set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
 		return norm_dict
 
 	def get_asset_details(self, category, asset_id, season_no="", episode_no=""):
@@ -267,28 +267,14 @@ class ProviderCINEMETA:
 		return err_msg, asset_details
 
 	def find_season_episode(self, episode_index, episode_name="", plain_season_episode=""):
-		if episode_index:
-			if plain_season_episode:
-				for episode in episode_index.get("episodes", {}).items():
-					if episode[0] == plain_season_episode:
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-				if str(plain_season_episode).isdigit():
-					for episode in episode_index.get("episodes", {}).items():
-						if episode[0].split("-")[-1] == str(int(plain_season_episode)):
-							return tuple((episode[0], episode[1][0], episode[1][1]))
-			elif episode_name:
-				for episode in episode_index.get("episodes", {}).items():
-					index_name, search_name = episode[1][1].lower(), episode_name.lower()
-					if search_name and (index_name in search_name or search_name in index_name):
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-		return ()
+		return match_season_episode(episode_index, episode_name, plain_season_episode)  # e.g. ('1-2', '283766', 'Die Warnung')
 
 	def get_cast(self, meta_dict):
 		cast_list = []
 		for actor_name in meta_dict.get("cast", []) or []:
 			staff_dict = {}
-			self.set_dict_key(staff_dict, Fields.JOB, "Actor")
-			self.set_dict_key(staff_dict, Fields.NAME, actor_name)
+			set_dict_key(staff_dict, Fields.JOB, "Actor")
+			set_dict_key(staff_dict, Fields.NAME, actor_name)
 			if staff_dict:
 				cast_list.append(staff_dict)
 		return cast_list
@@ -298,8 +284,8 @@ class ProviderCINEMETA:
 		for job, names in (("Director", meta_dict.get("director", [])), ("Writer", meta_dict.get("writer", []))):
 			for person_name in names or []:
 				staff_dict = {}
-				self.set_dict_key(staff_dict, Fields.JOB, job)
-				self.set_dict_key(staff_dict, Fields.NAME, person_name)
+				set_dict_key(staff_dict, Fields.JOB, job)
+				set_dict_key(staff_dict, Fields.NAME, person_name)
 				if staff_dict:
 					crew_list.append(staff_dict)
 		return crew_list
@@ -314,11 +300,6 @@ class ProviderCINEMETA:
 			return err_msg, {}
 		except ValueError as err_msg:
 			return err_msg, {}
-
-	def set_dict_key(self, dictionary, key, value):
-		if value and value != "N/A":
-			dictionary[key] = value
-
 
 provider_cinemeta = ProviderCINEMETA()
 

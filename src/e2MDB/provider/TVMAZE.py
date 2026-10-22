@@ -6,20 +6,18 @@
 
 from datetime import datetime
 from getopt import getopt, GetoptError
-from html import unescape
 from json import dump
-from re import sub
 from sys import exit, argv
 from requests import get, exceptions
 
 try:
-    from .Consts import Fields
+	from .Common import Fields, match_season_episode, html_to_text, set_dict_key
 except ImportError:
-    import sys
-    from pathlib import Path
+	import sys
+	from pathlib import Path
 
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+	sys.path.append(str(Path(__file__).resolve().parents[1]))
+	from Common import Fields, match_season_episode, html_to_text, set_dict_key
 
 try:
 	from .. import write_log
@@ -78,19 +76,19 @@ class ProviderTVMAZE:
 				if year and premiered and str(premiered)[:4] != str(year):
 					continue
 				norm_dict = {}
-				self.set_dict_key(norm_dict, Fields.PROVIDER, "tvmaze")
-				self.set_dict_key(norm_dict, Fields.TITLE, show.get("name", ""))
-				self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
-				self.set_dict_key(norm_dict, Fields.COUNTRIES, self._country(show))
-				self.set_dict_key(norm_dict, Fields.RELEASED, premiered)
-				self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(show.get("genres", []) or []))
-				self.set_dict_key(norm_dict, Fields.OVERVIEW, self.html_to_text(show.get("summary", "")))
-				self.set_dict_key(norm_dict, Fields.RUNTIME, str(show.get("averageRuntime", "") or show.get("runtime", "")))
-				self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(show))
-				self.set_dict_key(norm_dict, Fields.COVER_URL, self._image(show))
+				set_dict_key(norm_dict, Fields.PROVIDER, "tvmaze")
+				set_dict_key(norm_dict, Fields.TITLE, show.get("name", ""))
+				set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
+				set_dict_key(norm_dict, Fields.COUNTRIES, self._country(show))
+				set_dict_key(norm_dict, Fields.RELEASED, premiered)
+				set_dict_key(norm_dict, Fields.GENRES, ", ".join(show.get("genres", []) or []))
+				set_dict_key(norm_dict, Fields.OVERVIEW, html_to_text(show.get("summary", "")))
+				set_dict_key(norm_dict, Fields.RUNTIME, str(show.get("averageRuntime", "") or show.get("runtime", "")))
+				set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(show))
+				set_dict_key(norm_dict, Fields.COVER_URL, self._image(show))
 				provider_ids = {"tvmaze": str(show.get("id", ""))}
 				provider_ids.update(self._externals(show))
-				self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, provider_ids)
+				set_dict_key(norm_dict, Fields.PROVIDER_IDS, provider_ids)
 				norm_dicts.append(norm_dict)
 			except Exception as err_msg:
 				write_log(f"{MODULE_NAME}ERROR in module 'create_norm_result_dicts': {err_msg}'")
@@ -128,39 +126,39 @@ class ProviderTVMAZE:
 
 	def create_norm_series_dict(self, show_dict):
 		norm_dict = {}
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "tvmaze")
-		self.set_dict_key(norm_dict, Fields.TITLE, show_dict.get("name", ""))
-		self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
+		set_dict_key(norm_dict, Fields.PROVIDER, "tvmaze")
+		set_dict_key(norm_dict, Fields.TITLE, show_dict.get("name", ""))
+		set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
 		series_id = str(show_dict.get("id", ""))
-		self.set_dict_key(norm_dict, Fields.SERIES_ID, series_id)
-		self.set_dict_key(norm_dict, Fields.COUNTRIES, self._country(show_dict))
-		self.set_dict_key(norm_dict, Fields.RELEASED, show_dict.get("premiered", ""))
-		self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(show_dict.get("genres", []) or []))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, self.html_to_text(show_dict.get("summary", "")))
-		self.set_dict_key(norm_dict, Fields.RUNTIME, str(show_dict.get("averageRuntime", "") or show_dict.get("runtime", "")))
-		self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(show_dict))
-		self.set_dict_key(norm_dict, Fields.COVER_URL, self._image(show_dict))
-		self.set_dict_key(norm_dict, Fields.COVER_SRC, "series")
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(norm_dict, Fields.SERIES_ID, series_id)
+		set_dict_key(norm_dict, Fields.COUNTRIES, self._country(show_dict))
+		set_dict_key(norm_dict, Fields.RELEASED, show_dict.get("premiered", ""))
+		set_dict_key(norm_dict, Fields.GENRES, ", ".join(show_dict.get("genres", []) or []))
+		set_dict_key(norm_dict, Fields.OVERVIEW, html_to_text(show_dict.get("summary", "")))
+		set_dict_key(norm_dict, Fields.RUNTIME, str(show_dict.get("averageRuntime", "") or show_dict.get("runtime", "")))
+		set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(show_dict))
+		set_dict_key(norm_dict, Fields.COVER_URL, self._image(show_dict))
+		set_dict_key(norm_dict, Fields.COVER_SRC, "series")
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
 		provider_ids = {"tvmaze": series_id}
 		provider_ids.update(self._externals(show_dict))
-		self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, provider_ids)
-		self.set_dict_key(norm_dict, Fields.CAST, self.get_cast(show_dict))
+		set_dict_key(norm_dict, Fields.PROVIDER_IDS, provider_ids)
+		set_dict_key(norm_dict, Fields.CAST, self.get_cast(show_dict))
 		seasons = []
 		for season in show_dict.get("_embedded", {}).get("seasons", []) or []:
 			season_dict = {}
 			season_no = str(season.get("number", ""))
-			self.set_dict_key(season_dict, Fields.PROVIDER, "tvmaze")
-			self.set_dict_key(season_dict, Fields.SERIES_ID, series_id)
-			self.set_dict_key(season_dict, Fields.SEASON_NAME, season.get("name", "") or f"Season {season_no}")
-			self.set_dict_key(season_dict, "season_id", str(season.get("id", "")))
-			self.set_dict_key(season_dict, Fields.SEASON_NO, season_no)
-			self.set_dict_key(season_dict, Fields.RELEASED, season.get("premiereDate", ""))
-			self.set_dict_key(season_dict, Fields.OVERVIEW, self.html_to_text(season.get("summary", "")))
-			self.set_dict_key(season_dict, Fields.COVER_URL, self._image(season))
-			self.set_dict_key(season_dict, Fields.COVER_SRC, "season")
+			set_dict_key(season_dict, Fields.PROVIDER, "tvmaze")
+			set_dict_key(season_dict, Fields.SERIES_ID, series_id)
+			set_dict_key(season_dict, Fields.SEASON_NAME, season.get("name", "") or f"Season {season_no}")
+			set_dict_key(season_dict, "season_id", str(season.get("id", "")))
+			set_dict_key(season_dict, Fields.SEASON_NO, season_no)
+			set_dict_key(season_dict, Fields.RELEASED, season.get("premiereDate", ""))
+			set_dict_key(season_dict, Fields.OVERVIEW, html_to_text(season.get("summary", "")))
+			set_dict_key(season_dict, Fields.COVER_URL, self._image(season))
+			set_dict_key(season_dict, Fields.COVER_SRC, "season")
 			seasons.append(season_dict)
-		self.set_dict_key(norm_dict, Fields.SEASONS, seasons)
+		set_dict_key(norm_dict, Fields.SEASONS, seasons)
 		return norm_dict
 
 	def get_all_episodes(self, series_id):
@@ -195,19 +193,19 @@ class ProviderTVMAZE:
 	def create_norm_episode_dict(self, episode_dict, series_id=""):
 		norm_dict = {}
 		if episode_dict:
-			self.set_dict_key(norm_dict, Fields.PROVIDER, "tvmaze")
-			self.set_dict_key(norm_dict, Fields.SERIES_ID, str(series_id or self._get(episode_dict, ("_links", "show", "href"), "").rstrip("/").split("/")[-1]))
-			self.set_dict_key(norm_dict, Fields.EPISODE_NAME, episode_dict.get("name", ""))
-			self.set_dict_key(norm_dict, Fields.EPISODE_ID, str(episode_dict.get("id", "")))
-			self.set_dict_key(norm_dict, Fields.SEASON_NO, str(episode_dict.get("season", "")))
-			self.set_dict_key(norm_dict, Fields.EPISODE_NO, str(episode_dict.get("number", "")))
-			self.set_dict_key(norm_dict, Fields.RUNTIME, str(episode_dict.get("runtime", "")))
-			self.set_dict_key(norm_dict, Fields.RELEASED, episode_dict.get("airdate", ""))
-			self.set_dict_key(norm_dict, Fields.OVERVIEW, self.html_to_text(episode_dict.get("summary", "")))
-			self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(episode_dict))
-			self.set_dict_key(norm_dict, "image_url", self._image(episode_dict))
-			self.set_dict_key(norm_dict, "image_src", "episode")
-			self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+			set_dict_key(norm_dict, Fields.PROVIDER, "tvmaze")
+			set_dict_key(norm_dict, Fields.SERIES_ID, str(series_id or self._get(episode_dict, ("_links", "show", "href"), "").rstrip("/").split("/")[-1]))
+			set_dict_key(norm_dict, Fields.EPISODE_NAME, episode_dict.get("name", ""))
+			set_dict_key(norm_dict, Fields.EPISODE_ID, str(episode_dict.get("id", "")))
+			set_dict_key(norm_dict, Fields.SEASON_NO, str(episode_dict.get("season", "")))
+			set_dict_key(norm_dict, Fields.EPISODE_NO, str(episode_dict.get("number", "")))
+			set_dict_key(norm_dict, Fields.RUNTIME, str(episode_dict.get("runtime", "")))
+			set_dict_key(norm_dict, Fields.RELEASED, episode_dict.get("airdate", ""))
+			set_dict_key(norm_dict, Fields.OVERVIEW, html_to_text(episode_dict.get("summary", "")))
+			set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(episode_dict))
+			set_dict_key(norm_dict, "image_url", self._image(episode_dict))
+			set_dict_key(norm_dict, "image_src", "episode")
+			set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
 		return norm_dict
 
 	def get_asset_details(self, category, asset_id, season_no="", episode_no=""):
@@ -225,21 +223,7 @@ class ProviderTVMAZE:
 		return err_msg, asset_details
 
 	def find_season_episode(self, episode_index, episode_name="", plain_season_episode=""):
-		if episode_index:
-			if plain_season_episode:
-				for episode in episode_index.get("episodes", {}).items():
-					if episode[0] == plain_season_episode:
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-				if str(plain_season_episode).isdigit():
-					for episode in episode_index.get("episodes", {}).items():
-						if episode[0].split("-")[-1] == str(int(plain_season_episode)):
-							return tuple((episode[0], episode[1][0], episode[1][1]))
-			elif episode_name:
-				for episode in episode_index.get("episodes", {}).items():
-					index_name, search_name = episode[1][1].lower(), episode_name.lower()
-					if search_name and (index_name in search_name or search_name in index_name):
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-		return ()
+		return match_season_episode(episode_index, episode_name, plain_season_episode)  # e.g. ('1-2', '283766', 'Die Warnung')
 
 	def get_cast(self, show_dict):
 		cast_list = []
@@ -247,11 +231,11 @@ class ProviderTVMAZE:
 			person = cast_item.get("person", {}) or {}
 			character = cast_item.get("character", {}) or {}
 			staff_dict = {}
-			self.set_dict_key(staff_dict, Fields.JOB, "Actor")
-			self.set_dict_key(staff_dict, Fields.NAME, person.get("name", ""))
-			self.set_dict_key(staff_dict, Fields.CHARACTER, character.get("name", ""))
-			self.set_dict_key(staff_dict, Fields.PROFILE_ID, str(person.get("id", "")))
-			self.set_dict_key(staff_dict, Fields.PROFILE_URL, self._image(person))
+			set_dict_key(staff_dict, Fields.JOB, "Actor")
+			set_dict_key(staff_dict, Fields.NAME, person.get("name", ""))
+			set_dict_key(staff_dict, Fields.CHARACTER, character.get("name", ""))
+			set_dict_key(staff_dict, Fields.PROFILE_ID, str(person.get("id", "")))
+			set_dict_key(staff_dict, Fields.PROFILE_URL, self._image(person))
 			if staff_dict:
 				cast_list.append(staff_dict)
 		return cast_list
@@ -298,13 +282,6 @@ class ProviderTVMAZE:
 			json_obj = json_obj[key]
 		return json_obj if json_obj is not None else default
 
-	def html_to_text(self, html):
-		if not html:
-			return ""
-		if isinstance(html, bytes):
-			html = html.decode("utf-8", "replace")
-		return unescape(sub(r"<br\s*/?>", "\n", sub(r"<.*?>", "", html))).strip()
-
 	def get_api_dicts(self, url, params=None, timeout=(3.05, 6)):
 		try:
 			response = get(url, params=params, timeout=timeout)
@@ -315,11 +292,6 @@ class ProviderTVMAZE:
 			return err_msg, {}
 		except ValueError as err_msg:
 			return err_msg, {}
-
-	def set_dict_key(self, dictionary, key, value):
-		if value and value != "N/A":
-			dictionary[key] = value
-
 
 provider_tvmaze = ProviderTVMAZE()
 

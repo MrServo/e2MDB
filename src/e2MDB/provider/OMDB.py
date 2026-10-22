@@ -16,13 +16,13 @@ from requests import get, exceptions
 from sys import exit, argv
 
 try:
-    from .Consts import Fields
+    from .Common import Fields, set_dict_key
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+    from Common import Fields, set_dict_key
 
 try:
 	from .. import write_log
@@ -70,26 +70,26 @@ class ProviderOMDB:
 		if result_dict and result_dict.get("Response", "False") == "True":
 			try:
 				norm_dict = {}
-				self.set_dict_key(norm_dict, Fields.PROVIDER, "omdb")
-				self.set_dict_key(norm_dict, Fields.TITLE, result_dict.get("Title", ""))
+				set_dict_key(norm_dict, Fields.PROVIDER, "omdb")
+				set_dict_key(norm_dict, Fields.TITLE, result_dict.get("Title", ""))
 				# OMDB don't support 'tagline' at all
-				self.set_dict_key(norm_dict, Fields.COUNTRIES, result_dict.get("Country", ""))  # e.g. 'United States'
+				set_dict_key(norm_dict, Fields.COUNTRIES, result_dict.get("Country", ""))  # e.g. 'United States'
 				rel_list = result_dict.get("Released", "").upper().split(" ")  # e.g. '04 Oct 1997'
 				if rel_list and len(rel_list) > 2:  # necessary workaround due to fixed localisation of Enigma2 (e.g. to 'de_DE')
 					month = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}.get(rel_list[1], 0)
 					if month and int(rel_list[2]) and int(rel_list[0]):
 						released_dt = datetime.now().replace(year=int(rel_list[2]), month=month, day=int(rel_list[0]), hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-						self.set_dict_key(norm_dict, Fields.RELEASED, released_dt.strftime('%Y-%m-%d'))
-				self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, result_dict.get("Type", "") or media_type)
-				self.set_dict_key(norm_dict, Fields.GENRES, result_dict.get("Genre", ""))  # e.g. 'Drama, Romance'
-				self.set_dict_key(norm_dict, Fields.OVERVIEW, result_dict.get("Plot", "").replace("N/A", ""))  # longtext, OMDB doesn't support languages at all
-				self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, result_dict.get("imdbRating", "").replace(",", ""))
-				self.set_dict_key(norm_dict, Fields.VOTE_COUNT, result_dict.get("imdbVotes", "").replace(",", ""))
-				self.set_dict_key(norm_dict, Fields.COVER_URL, result_dict.get("Poster", ""))
-				self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # Add timestamp
+						set_dict_key(norm_dict, Fields.RELEASED, released_dt.strftime('%Y-%m-%d'))
+				set_dict_key(norm_dict, Fields.MEDIA_TYPE, result_dict.get("Type", "") or media_type)
+				set_dict_key(norm_dict, Fields.GENRES, result_dict.get("Genre", ""))  # e.g. 'Drama, Romance'
+				set_dict_key(norm_dict, Fields.OVERVIEW, result_dict.get("Plot", "").replace("N/A", ""))  # longtext, OMDB doesn't support languages at all
+				set_dict_key(norm_dict, Fields.VOTE_AVERAGE, result_dict.get("imdbRating", "").replace(",", ""))
+				set_dict_key(norm_dict, Fields.VOTE_COUNT, result_dict.get("imdbVotes", "").replace(",", ""))
+				set_dict_key(norm_dict, Fields.COVER_URL, result_dict.get("Poster", ""))
+				set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # Add timestamp
 				imdb_id = result_dict.get("imdbID", "")
 				if imdb_id and imdb_id != "N/A":
-					self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id, "omdb": imdb_id})  # OMDB has no own ids
+					set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id, "omdb": imdb_id})  # OMDB has no own ids
 				norm_dicts.append(norm_dict)
 			except Exception as err_msg:
 				write_log(f"{MODULE_NAME}ERROR in module 'create_norm_result_dicts': {err_msg}'")
@@ -181,11 +181,6 @@ class ProviderOMDB:
 		finally:
 			if response is not None:
 				response.close()
-
-	def set_dict_key(self, dictionary, key, value):
-		if value and value != "N/A":
-			dictionary[key] = value
-
 
 provider_omdb = ProviderOMDB()
 

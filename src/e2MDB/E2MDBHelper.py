@@ -15,7 +15,6 @@ from io import BytesIO
 from json import load, dump
 from os import makedirs
 from os.path import isfile, isdir, dirname, join, normpath
-from re import IGNORECASE, search
 from PIL import Image
 from requests import get, exceptions
 from threading import BoundedSemaphore
@@ -27,6 +26,7 @@ from Components.config import config
 # PLUGIN IMPORTS
 from . import write_log, e2mdbglobals
 from .E2MDBProviders import providers
+from .provider.Common import image_extension, set_dict_key
 
 
 class E2MDBHelper:
@@ -36,14 +36,6 @@ class E2MDBHelper:
 		cache_dir = config.plugins.e2mdb.cachePath.value or "/media/hdd/"
 		cache_dir = cache_dir.rstrip("/")
 		return "/e2MDB" if cache_dir == "" else f"{cache_dir}/e2MDB"  # e.g. '/media/hdd/e2MDB'
-
-	def get_image_extension(self, url, fallback="jpg"):
-		url = str(url or "")
-		match = search(r"\.(jpe?g|png|gif|webp)(?=$|[/?#_;&=,])", url, IGNORECASE)
-		if match:
-			extension = match.group(1).lower()
-			return "jpg" if extension == "webp" else extension
-		return fallback
 
 	def get_full_org_path(self, path):
 		"""Resolve cache-relative e2MDB paths to the configured cache root."""
@@ -73,11 +65,6 @@ class E2MDBHelper:
 	def get_reduced_org_hash(self, org_path):
 		return md5(self.get_reduced_org_path(org_path).encode()).hexdigest()
 
-	def set_dict_key(self, dictionary, key, value):
-		if value:
-			dictionary[key] = value
-		return dictionary
-
 	def get_primary_datapath(self, org_path, data_type="data", url="", pic_type=""):  # for images and json files (primary data)
 		# possible image types: e.g. 'cover', 'backdrop', 'titlelogo', 'image'
 		data_path = ""
@@ -85,7 +72,7 @@ class E2MDBHelper:
 		sub_hash = f"{org_hash[0]}/{org_hash}"  # e.g. '/5/59bda60229dff93d3263c78ad9ffb71b'
 		if pic_type:  # means image
 			if url:
-				extension = self.get_image_extension(url)
+				extension = image_extension(url)
 				data_path = f"{self.get_cache_dir()}/{pic_type}/{sub_hash}.{extension}"  # e.g. '/cover/5/59bda60229dff93d3263c78ad9ffb71b.jpg'
 			return data_path
 		else:  # means data
@@ -102,7 +89,7 @@ class E2MDBHelper:
 			sub_path = f"{category}/{pvr_name}/{pvr_id}"
 		if pic_type:  # means image
 			if url:
-				extension = self.get_image_extension(url)
+				extension = image_extension(url)
 				data_path = f"{self.get_cache_dir()}/{sub_path}/{pic_type}.{extension}"
 		else:  # means data
 			data_path = f"{self.get_cache_dir()}/{sub_path}/data.json"
@@ -309,7 +296,7 @@ class E2MDBHelper:
 				"match_reason": match_reason,
 			}
 			for key, value in context_values.items():
-				self.set_dict_key(final_dict, key, value)
+				set_dict_key(final_dict, key, value)
 			# Drop provider-search helper keys before metadata is written to JSON/DB.
 			for key in list(final_dict.keys()):
 				if str(key).startswith("_"):
@@ -469,15 +456,15 @@ class E2MDBHelper:
 					best_desc_ratio, curr_is_best = desc_ratio, True
 				if curr_is_best:
 					curr_is_best = False
-					self.set_dict_key(best_hit_dict, "title", result_dict.get("title", ""))
+					set_dict_key(best_hit_dict, "title", result_dict.get("title", ""))
 					# check all descriptions
 					pvr_desc = result_dict.get("overview", "")
 					if len(pvr_desc) > 49:  # ignore short descriptions e.g. 'deutscher Spielfilm'
 						desc_dict = best_hit_dict.get("overview", "")
 						if desc_dict and pvr_desc and len(pvr_desc) > len(desc_dict):
-							self.set_dict_key(best_hit_dict, "overview", pvr_desc)
+							set_dict_key(best_hit_dict, "overview", pvr_desc)
 					best_hit_dict = result_dict
-					self.set_dict_key(best_hit_dict, "provider", pvr_name)
+					set_dict_key(best_hit_dict, "provider", pvr_name)
 				if best_title_ratio == 1.0 or best_desc_ratio == 1.0:  # was the maximum possible already achieved?
 					break
 		if best_title_ratio >= TITLE_LIMIT or best_desc_ratio >= DESC_LIMIT:
@@ -532,8 +519,8 @@ class E2MDBHelper:
 				final_dict = apply_fanart_artwork(final_dict)
 			if final_dict:  # add some evaluation results
 				final_dict = addSearchContext(final_dict)
-				final_dict = self.set_dict_key(final_dict, "title_ratio", str(best_title_ratio))
-				final_dict = self.set_dict_key(final_dict, "desc_ratio", str(best_desc_ratio))
+				final_dict = set_dict_key(final_dict, "title_ratio", str(best_title_ratio))
+				final_dict = set_dict_key(final_dict, "desc_ratio", str(best_desc_ratio))
 		return final_dict, search_marker  # best hit found: 'movie' or fillup sequence 'episode->season->series'
 
 	def cleanup_cache(self):

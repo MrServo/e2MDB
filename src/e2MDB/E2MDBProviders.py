@@ -25,6 +25,7 @@ try:
 	from .provider.ANIME import provider_anime
 	from .provider.KITSU import provider_kitsu
 	from .provider.FanArt import provider_fanart
+	from .provider.Common import MOVIE_SEARCH_ORDER, SERIES_SEARCH_ORDER
 except ImportError:
 	from provider.TMDB import provider_tmdb
 	from provider.TVDB import provider_tvdb
@@ -35,6 +36,7 @@ except ImportError:
 	from provider.ANIME import provider_anime
 	from provider.KITSU import provider_kitsu
 	from provider.FanArt import provider_fanart
+	from provider.Common import MOVIE_SEARCH_ORDER, SERIES_SEARCH_ORDER
 
 try:
 	from . import write_log
@@ -47,8 +49,8 @@ MODULE_NAME = f"[{__name__.split(".")[-1]}] ".replace("[__main__] ", "")
 
 class E2MDBProviders:
 	def __init__(self):
-		self.series_search_order = {"tvdb": True, "tmdb": True, "tvmaze": False, "cinemeta": False, "anime": False, "kitsu": False, "omdb": True, "imdb": False}
-		self.movie_search_order = {"tmdb": True, "cinemeta": False, "anime": False, "kitsu": False, "tvdb": True, "omdb": True, "imdb": False}
+		self.series_search_order = dict(SERIES_SEARCH_ORDER)
+		self.movie_search_order = dict(MOVIE_SEARCH_ORDER)
 		self.language = "en-US"
 		self.all_keys = [
 						"countries", "releaseDate", "media_type", "genres", "vote_average",

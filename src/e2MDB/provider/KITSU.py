@@ -6,20 +6,18 @@
 
 from datetime import datetime
 from getopt import getopt, GetoptError
-from html import unescape
 from json import dump
-from re import sub
 from sys import exit, argv
 from requests import get, exceptions
 
 try:
-    from .Consts import Fields
+	from .Common import Fields, match_season_episode, html_to_text, set_dict_key
 except ImportError:
-    import sys
-    from pathlib import Path
+	import sys
+	from pathlib import Path
 
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+	sys.path.append(str(Path(__file__).resolve().parents[1]))
+	from Common import Fields, match_season_episode, html_to_text, set_dict_key
 
 try:
 	from .. import write_log
@@ -143,12 +141,12 @@ class ProviderKITSU:
 			if str(season.get("season_no", "")) == season_no:
 				return "", season
 		season_dict = {}
-		self.set_dict_key(season_dict, Fields.PROVIDER, "kitsu")
-		self.set_dict_key(season_dict, Fields.SERIES_ID, series_dict.get("series_id", ""))
-		self.set_dict_key(season_dict, Fields.SEASON_NAME, f"Season {season_no}")
-		self.set_dict_key(season_dict, Fields.SEASON_NO, season_no)
-		self.set_dict_key(season_dict, Fields.COVER_URL, series_dict.get("cover_url", ""))
-		self.set_dict_key(season_dict, Fields.COVER_SRC, "season")
+		set_dict_key(season_dict, Fields.PROVIDER, "kitsu")
+		set_dict_key(season_dict, Fields.SERIES_ID, series_dict.get("series_id", ""))
+		set_dict_key(season_dict, Fields.SEASON_NAME, f"Season {season_no}")
+		set_dict_key(season_dict, Fields.SEASON_NO, season_no)
+		set_dict_key(season_dict, Fields.COVER_URL, series_dict.get("cover_url", ""))
+		set_dict_key(season_dict, Fields.COVER_SRC, "season")
 		return "", season_dict
 
 	def get_episode_details(self, series_id="", episode_id="", season_no="", episode_no=""):
@@ -160,13 +158,13 @@ class ProviderKITSU:
 			episode_no = episode_no or (parts[2] if len(parts) > 2 else "")
 		if not (series_id and episode_no):
 			return "", {}
-		self.set_dict_key(episode_dict, Fields.PROVIDER, "kitsu")
-		self.set_dict_key(episode_dict, Fields.SERIES_ID, str(series_id))
-		self.set_dict_key(episode_dict, Fields.EPISODE_NAME, f"Episode {episode_no}")
-		self.set_dict_key(episode_dict, Fields.EPISODE_ID, str(episode_id or f"{series_id}:{season_no or 1}:{episode_no}"))
-		self.set_dict_key(episode_dict, Fields.SEASON_NO, str(season_no or "1"))
-		self.set_dict_key(episode_dict, Fields.EPISODE_NO, str(episode_no))
-		self.set_dict_key(episode_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(episode_dict, Fields.PROVIDER, "kitsu")
+		set_dict_key(episode_dict, Fields.SERIES_ID, str(series_id))
+		set_dict_key(episode_dict, Fields.EPISODE_NAME, f"Episode {episode_no}")
+		set_dict_key(episode_dict, Fields.EPISODE_ID, str(episode_id or f"{series_id}:{season_no or 1}:{episode_no}"))
+		set_dict_key(episode_dict, Fields.SEASON_NO, str(season_no or "1"))
+		set_dict_key(episode_dict, Fields.EPISODE_NO, str(episode_no))
+		set_dict_key(episode_dict, Fields.LAST_UPDATED, self.last_update)
 		return "", episode_dict
 
 	def get_asset_details(self, category, asset_id, season_no="", episode_no=""):
@@ -188,21 +186,7 @@ class ProviderKITSU:
 		return err_msg, asset_details
 
 	def find_season_episode(self, episode_index, episode_name="", plain_season_episode=""):
-		if episode_index:
-			if plain_season_episode:
-				for episode in episode_index.get("episodes", {}).items():
-					if episode[0] == plain_season_episode:
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-				if str(plain_season_episode).isdigit():
-					for episode in episode_index.get("episodes", {}).items():
-						if episode[0].split("-")[-1] == str(int(plain_season_episode)):
-							return tuple((episode[0], episode[1][0], episode[1][1]))
-			elif episode_name:
-				for episode in episode_index.get("episodes", {}).items():
-					index_name, search_name = episode[1][1].lower(), episode_name.lower()
-					if search_name and (index_name in search_name or search_name in index_name):
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-		return ()
+		return match_season_episode(episode_index, episode_name, plain_season_episode)  # e.g. ('1-2', '283766', 'Die Warnung')
 
 	def get_media_dict(self, media_id, resource_type="anime"):
 		url = f"{self.base_url}/{resource_type}/{media_id}"
@@ -223,34 +207,34 @@ class ProviderKITSU:
 		attrs = self._attrs(media_dict)
 		media_type = media_type or self._media_type(media_dict)
 		kitsu_id = str(media_dict.get("id", ""))
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "kitsu")
-		self.set_dict_key(norm_dict, Fields.TITLE, self._title(attrs))
-		self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
+		set_dict_key(norm_dict, Fields.PROVIDER, "kitsu")
+		set_dict_key(norm_dict, Fields.TITLE, self._title(attrs))
+		set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
 		if media_type == "series":
-			self.set_dict_key(norm_dict, Fields.SERIES_ID, kitsu_id)
-		self.set_dict_key(norm_dict, Fields.RELEASED, attrs.get("startDate", ""))
-		self.set_dict_key(norm_dict, Fields.AGE_RATING, attrs.get("ageRating", ""))
-		self.set_dict_key(norm_dict, Fields.GENRES, self._genres(media_dict))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, self.html_to_text(attrs.get("synopsis", "")))
-		self.set_dict_key(norm_dict, Fields.RUNTIME, str(attrs.get("episodeLength", "") or attrs.get("chapterCount", "") or attrs.get("volumeCount", "")))
-		self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._score(attrs))
-		self.set_dict_key(norm_dict, Fields.VOTE_COUNT, str(attrs.get("userCount", "") or attrs.get("favoritesCount", "") or ""))
-		self.set_dict_key(norm_dict, Fields.COVER_URL, self._image(attrs.get("posterImage", {}) or {}))
-		self.set_dict_key(norm_dict, Fields.COVER_SRC, media_type)
-		self.set_dict_key(norm_dict, Fields.BACKDROP_URL, self._image(attrs.get("coverImage", {}) or {}))
-		self.set_dict_key(norm_dict, Fields.BACKDROP_SRC, media_type)
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
-		self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"kitsu": kitsu_id})
+			set_dict_key(norm_dict, Fields.SERIES_ID, kitsu_id)
+		set_dict_key(norm_dict, Fields.RELEASED, attrs.get("startDate", ""))
+		set_dict_key(norm_dict, Fields.AGE_RATING, attrs.get("ageRating", ""))
+		set_dict_key(norm_dict, Fields.GENRES, self._genres(media_dict))
+		set_dict_key(norm_dict, Fields.OVERVIEW, html_to_text(attrs.get("synopsis", "")))
+		set_dict_key(norm_dict, Fields.RUNTIME, str(attrs.get("episodeLength", "") or attrs.get("chapterCount", "") or attrs.get("volumeCount", "")))
+		set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._score(attrs))
+		set_dict_key(norm_dict, Fields.VOTE_COUNT, str(attrs.get("userCount", "") or attrs.get("favoritesCount", "") or ""))
+		set_dict_key(norm_dict, Fields.COVER_URL, self._image(attrs.get("posterImage", {}) or {}))
+		set_dict_key(norm_dict, Fields.COVER_SRC, media_type)
+		set_dict_key(norm_dict, Fields.BACKDROP_URL, self._image(attrs.get("coverImage", {}) or {}))
+		set_dict_key(norm_dict, Fields.BACKDROP_SRC, media_type)
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"kitsu": kitsu_id})
 		if details and media_type == "series":
 			season_dict = {}
-			self.set_dict_key(season_dict, Fields.PROVIDER, "kitsu")
-			self.set_dict_key(season_dict, Fields.SERIES_ID, kitsu_id)
-			self.set_dict_key(season_dict, Fields.SEASON_NAME, "Season 1")
-			self.set_dict_key(season_dict, Fields.SEASON_NO, "1")
-			self.set_dict_key(season_dict, Fields.RELEASED, attrs.get("startDate", ""))
-			self.set_dict_key(season_dict, Fields.COVER_URL, norm_dict.get("cover_url", ""))
-			self.set_dict_key(season_dict, Fields.COVER_SRC, "season")
-			self.set_dict_key(norm_dict, Fields.SEASONS, [season_dict])
+			set_dict_key(season_dict, Fields.PROVIDER, "kitsu")
+			set_dict_key(season_dict, Fields.SERIES_ID, kitsu_id)
+			set_dict_key(season_dict, Fields.SEASON_NAME, "Season 1")
+			set_dict_key(season_dict, Fields.SEASON_NO, "1")
+			set_dict_key(season_dict, Fields.RELEASED, attrs.get("startDate", ""))
+			set_dict_key(season_dict, Fields.COVER_URL, norm_dict.get("cover_url", ""))
+			set_dict_key(season_dict, Fields.COVER_SRC, "season")
+			set_dict_key(norm_dict, Fields.SEASONS, [season_dict])
 		return norm_dict
 
 	def _attrs(self, media_dict):
@@ -301,13 +285,6 @@ class ProviderKITSU:
 				genres.append(name)
 		return ", ".join(genres)
 
-	def html_to_text(self, html):
-		if not html:
-			return ""
-		if isinstance(html, bytes):
-			html = html.decode("utf-8", "replace")
-		return unescape(sub(r"<br\s*/?>", "\n", sub(r"<.*?>", "", html))).strip()
-
 	def get_api_dicts(self, url, params=None, timeout=(3.05, 8)):
 		try:
 			response = get(url, params=params or {}, headers={"Accept": "application/vnd.api+json, application/json", "Content-Type": "application/vnd.api+json"}, timeout=timeout)
@@ -318,11 +295,6 @@ class ProviderKITSU:
 			return err_msg, {}
 		except ValueError as err_msg:
 			return err_msg, {}
-
-	def set_dict_key(self, dictionary, key, value):
-		if value and value != "N/A":
-			dictionary[key] = value
-
 
 provider_kitsu = ProviderKITSU()
 

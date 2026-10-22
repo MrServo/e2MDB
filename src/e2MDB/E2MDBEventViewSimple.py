@@ -34,6 +34,7 @@ from . import e2mdbglobals, write_log, _
 from .E2MDBHelper import E2MDBHelper
 from .E2MDBDatabase import resultsdb
 from .E2MDBSkin import build_eventview_final_dict_from_db
+from .provider.Common import set_dict_key
 
 
 class E2MDBEventViewSimple(Screen):
@@ -174,11 +175,6 @@ class E2MDBEventViewSimple(Screen):
 
 	def layoutFinished(self):
 
-		def _set_dict_key(dictionary, key, value):
-			if value:
-				dictionary[key] = value
-			return dictionary
-
 		self.setService(self.serviceRef)
 		self.setEvent(self.event)  # TODO: can response 'hasEvent' be deleted in function?
 		final_dict = self._load_final_dict_from_db()
@@ -223,19 +219,19 @@ class E2MDBEventViewSimple(Screen):
 			desc_long = f"{desc_short}\n\n{crew_long}\n{cast_long}"
 			self["description"].setText(desc_long)
 			item_dict = {}  # data for infoline
-			_set_dict_key(item_dict, "media_type", media_type)
-			_set_dict_key(item_dict, "countries", final_dict.get("countries", ""))
-			_set_dict_key(item_dict, "released", final_dict.get("released", "")[:4])
-			_set_dict_key(item_dict, "genres", final_dict.get("genres", ""))
+			set_dict_key(item_dict, "media_type", media_type)
+			set_dict_key(item_dict, "countries", final_dict.get("countries", ""))
+			set_dict_key(item_dict, "released", final_dict.get("released", "")[:4])
+			set_dict_key(item_dict, "genres", final_dict.get("genres", ""))
 			season_no, episode_no = final_dict.get("season_no", ""), final_dict.get("episode_no", "")
 			desc_list = []
 			if season_no and episode_no:
 				desc_list.append(f"{_('Season')} {season_no} / {_('Episode')} {episode_no}")
-			_set_dict_key(item_dict, "season_epsiode", ", ".join(desc_list))
-			_set_dict_key(item_dict, "runtime", runtime)
-			_set_dict_key(item_dict, "age_rating", age_rating)
-			_set_dict_key(item_dict, "vote_average", vote_average)
-			_set_dict_key(item_dict, "provider", provider)
+			set_dict_key(item_dict, "season_epsiode", ", ".join(desc_list))
+			set_dict_key(item_dict, "runtime", runtime)
+			set_dict_key(item_dict, "age_rating", age_rating)
+			set_dict_key(item_dict, "vote_average", vote_average)
+			set_dict_key(item_dict, "provider", provider)
 			self["infoline"].updateInfo(item_dict)
 			backdrop_path = final_dict.get("backdrop_path", "")
 			if backdrop_path and isfile(backdrop_path):

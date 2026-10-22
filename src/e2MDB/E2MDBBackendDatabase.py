@@ -16,30 +16,17 @@ from sqlite3 import Row, connect
 from threading import RLock
 from time import time
 
+from provider.Common import CACHE_DIRS, candidate_title_year, normalize_text, safe_int
+
 
 DEFAULT_DATABASE_ROOT = "/media/hdd/e2MDB"
 DEFAULT_DATABASE_NAME = "results.db"
-CACHE_DIRS = ("data", "index", "series", "seasons", "backdrop", "cover", "titlelogo", "image", "preview", "fanart", "fernsehserien", "wikimedia", "wikipedia", "results")
 ARTWORK_CACHE_DIRS = ("cover", "backdrop", "titlelogo", "image", "preview", "fanart", "fernsehserien", "wikimedia", "wikipedia")
 PRIMARY_HASH_CACHE_DIRS = ("data", "results", "cover", "backdrop", "titlelogo", "image")
 
 
-def safe_int(value, default=0):
-	try:
-		return int(value)
-	except Exception:
-		return default
-
-
 def truthy(value):
 	return str(value or "").strip().lower() in ("1", "true", "yes", "on", "all", "pending")
-
-
-def normalize_search_text(value):
-	value = str(value or "").strip().lower()
-	value = sub(r"[._\-]+", " ", value)
-	value = sub(r"[^a-z0-9äöüß ]+", " ", value)
-	return sub(r"\s+", " ", value).strip()
 
 
 def resolve_database_path(settings):
@@ -407,14 +394,14 @@ class BackendDatabase:
 		file_path = str(item.get("path") or "")
 		file_name = str(item.get("name") or "")
 		search_candidates = item.get("search_candidates") if isinstance(item.get("search_candidates"), list) else []
-		search_string = search_candidates[0] if search_candidates else (item.get("title") or file_name)
+		search_string = candidate_title_year(search_candidates[0])[0] if search_candidates else (item.get("title") or file_name)
 		return hash_id, file_path, file_name, str(search_string or "")
 
 	def _upsert_media(self, conn, item):
 		hash_id, file_path, file_name, search_string = self._media_fields_from_recording(item)
 		if not hash_id or not file_path:
 			return
-		search_norm = normalize_search_text(search_string)
+		search_norm = normalize_text(search_string)
 		conn.execute("""
 			INSERT OR IGNORE INTO e2mdb_media (
 				hash, file_path, file_name, search_string, search_string_norm,
@@ -542,8 +529,8 @@ class BackendDatabase:
 						processed_ids.append(recording_id)
 					self._upsert_media(conn, item)
 					search_candidates = item.get("search_candidates") if isinstance(item.get("search_candidates"), list) else []
-					search_text = " ".join([str(value or "") for value in search_candidates]) or str(item.get("title") or "")
-					search_text_norm = normalize_search_text(search_text)
+					search_text = " ".join([candidate_title_year(x)[0] for x in search_candidates]) or str(item.get("title") or "")
+					search_text_norm = normalize_text(search_text)
 					payload_json = self._json(item)
 					conn.execute("""
 						INSERT OR IGNORE INTO e2mdb_recordings (
@@ -622,7 +609,7 @@ class BackendDatabase:
 	def list_recordings(self, offset=0, limit=50, query=""):
 		offset = max(0, safe_int(offset, 0))
 		limit = max(1, min(500, safe_int(limit, 50)))
-		query_norm = normalize_search_text(query)
+		query_norm = normalize_text(query)
 		with self.lock:
 			with self._connect() as conn:
 				where_sql = ""
@@ -678,7 +665,7 @@ class BackendDatabase:
 			limit = 100000
 		else:
 			limit = max(1, min(100000, limit))
-		query_norm = normalize_search_text(query)
+		query_norm = normalize_text(query)
 		with self.lock:
 			with self._connect() as conn:
 				where = []
@@ -763,6 +750,7 @@ class BackendDatabase:
 		cover_value = self._first_non_empty(artwork.get("poster_path"), series_cover_value, best.get("cover_path"), best.get("poster_path"), best.get("cover_url"), best.get("poster_url"))
 		backdrop_value = self._first_non_empty(artwork.get("backdrop_path"), series_backdrop_value, best.get("backdrop_path"), best.get("backdrop_url"), best.get("fanart_url"))
 		logo_value = self._first_non_empty(artwork.get("logo_path"), best.get("titlelogo_path"), best.get("logo_path"), best.get("titlelogo_url"), best.get("logo_url"), best.get("clearlogo_url"))
+		image_value = self._first_non_empty(artwork.get("episode_path"), artwork.get("image_path"), artwork.get("still_path"), artwork.get("preview_path"))  # episode or movie screenshot
 		with self.lock:
 			with self._connect() as conn:
 				conn.execute("DELETE FROM e2mdb_provider_matches WHERE media_hash = ?", (media_hash,))
@@ -795,7 +783,7 @@ class BackendDatabase:
 						metadata_overview = CASE WHEN ? != '' THEN ? ELSE metadata_overview END,
 						metadata_provider = ?, metadata_provider_ids = ?, metadata_media_type = ?, metadata_year = ?,
 						metadata_runtime = ?, metadata_rating = ?, metadata_vote_count = ?, metadata_cover_path = ?,
-						metadata_backdrop_path = ?, metadata_logo_path = ?, metadata_released = ?, metadata_genres = ?,
+						metadata_backdrop_path = ?, metadata_logo_path = ?, metadata_image_path = ?, metadata_released = ?, metadata_genres = ?,
 						metadata_countries = ?, metadata_age_rating = ?, metadata_season_no = ?, metadata_episode_no = ?,
 						metadata_series_cover_path = ?, metadata_episode_image_path = ?,
 						metadata_cast = ?, metadata_crew = ?, artwork_poster_path = ?, artwork_backdrop_path = ?,
@@ -816,6 +804,7 @@ class BackendDatabase:
 					cover_value,
 					backdrop_value,
 					logo_value,
+					str(image_value or ""),
 					str(best.get("released") or best.get("releaseDate") or ""), self._json(best.get("genres") or []),
 					self._json(best.get("countries") or []), str(best.get("age_rating") or ""),
 					str(best.get("season_no") or recording_item.get("season_no") or ""), str(best.get("episode_no") or recording_item.get("episode_no") or ""),
@@ -897,12 +886,12 @@ class BackendDatabase:
 		return fallback or "movie"
 
 	def _browser_where_sql(self, query="", media_type="all", year="", genre="", cast="", letter="", include_pending=False):
-		query_norm = normalize_search_text(query)
+		query_norm = normalize_text(query)
 		media_type = str(media_type or "all").strip().lower()
 		year = str(year or "").strip()
-		genre_norm = normalize_search_text(genre)
+		genre_norm = normalize_text(genre)
 		cast_text = str(cast or "").strip()
-		cast_norm = normalize_search_text(cast_text)
+		cast_norm = normalize_text(cast_text)
 		letter = str(letter or "").strip().upper()
 		where = []
 		params = []
@@ -1044,9 +1033,9 @@ class BackendDatabase:
 			return f"{media_type}|{provider}|{provider_id}"
 		if media_type == "series":
 			title_source = self._first_non_empty(item.get("series_title"), item.get("title"), item.get("name"), item.get("search_string"), item.get("file_name"), item.get("file_path"))
-			title = normalize_search_text(self._series_title_from_text(title_source))
+			title = normalize_text(self._series_title_from_text(title_source))
 			return f"{media_type}|{title}"
-		title = normalize_search_text(item.get("title") or item.get("name") or item.get("search_string") or item.get("file_name") or "")
+		title = normalize_text(item.get("title") or item.get("name") or item.get("search_string") or item.get("file_name") or "")
 		year = str(item.get("year") or item.get("released") or "")[:4]
 		return f"{media_type}|{title}|{year}"
 
@@ -1297,9 +1286,9 @@ class BackendDatabase:
 			self._merge_browser_group(groups[key], item, row)
 			self._add_series_episode_to_group(groups[key], item)
 		items = [self._finalize_browser_group(group) for group in ordered]
-		cast_filter = normalize_search_text(cast)
+		cast_filter = normalize_text(cast)
 		if cast_filter:
-			items = [item for item in items if cast_filter in normalize_search_text(" ".join([str(x) for x in item.get("cast", [])]))]
+			items = [item for item in items if cast_filter in normalize_text(" ".join([str(x) for x in item.get("cast", [])]))]
 		return items
 
 	def _browser_items_grouped_page(self, offset=0, limit=50, query="", media_type="all", year="", genre="", cast="", letter="", include_pending=False):
@@ -1309,7 +1298,7 @@ class BackendDatabase:
 		# but the GUI gets visible cards immediately and continues loading during scrolling.
 		offset = max(0, safe_int(offset, 0))
 		limit = max(1, min(500, safe_int(limit, 50)))
-		cast_filter = normalize_search_text(cast)
+		cast_filter = normalize_text(cast)
 		where_sql, params = self._browser_where_sql(query=query, media_type=media_type, year=year, genre=genre, cast=cast, letter=letter, include_pending=include_pending)
 		row_window = max(limit * 12, limit + 80)
 		row_window = min(1500, row_window)
@@ -1332,7 +1321,7 @@ class BackendDatabase:
 					self._add_series_episode_to_group(groups[key], item)
 		items = [self._finalize_browser_group(group) for group in ordered]
 		if cast_filter:
-			items = [item for item in items if cast_filter in normalize_search_text(" ".join([str(x) for x in item.get("cast", [])]))]
+			items = [item for item in items if cast_filter in normalize_text(" ".join([str(x) for x in item.get("cast", [])]))]
 		has_more = len(items) > limit
 		return items[:limit], has_more
 
@@ -1864,7 +1853,7 @@ class BackendDatabase:
 		return {"success": True, "db_path": self.db_path, "tables": tables}
 
 	def _live_epg_canonical_source_key(self, source_type, service_ref, begin_time, event_end, title_norm):
-		identity = f"{str(source_type or "epg")}|{str(service_ref or "")}|{safe_int(begin_time, 0)}|{safe_int(event_end, 0)}|{normalize_search_text(title_norm or "")}"
+		identity = f"{str(source_type or "epg")}|{str(service_ref or "")}|{safe_int(begin_time, 0)}|{safe_int(event_end, 0)}|{normalize_text(title_norm or "")}"
 		return md5(identity.encode("utf-8")).hexdigest()
 
 	def live_epg_duplicates(self, limit=100, query="", fix=False):
@@ -2476,7 +2465,7 @@ class BackendDatabase:
 				updated_at = excluded.updated_at
 		""", (
 			source_key, str(queue_item.get("source_type") or "epg"), str(queue_item.get("service_ref") or ""), str(queue_item.get("service_name") or ""),
-			safe_int(queue_item.get("event_id"), 0), title, normalize_search_text(title), search_title,
+			safe_int(queue_item.get("event_id"), 0), title, normalize_text(title), search_title,
 			str(queue_item.get("short_desc") or ""), str(queue_item.get("extended_desc") or ""),
 			begin_time, duration, event_end, f"live://{source_key}", metadata.get("json_path", ""), status, confidence, now, expires_at, 0, now, now
 		))
@@ -2559,7 +2548,7 @@ class BackendDatabase:
 		now = int(time())
 		title = str(queue_item.get("search_title") or queue_item.get("title") or "").strip()
 		file_path = f"live://{source_key}"
-		search_norm = normalize_search_text(" ".join([title, str(queue_item.get("service_ref") or ""), str(queue_item.get("reason") or "")]))
+		search_norm = normalize_text(" ".join([title, str(queue_item.get("service_ref") or ""), str(queue_item.get("reason") or "")]))
 		with self.lock:
 			with self._connect() as conn:
 				conn.execute("""

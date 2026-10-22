@@ -9,7 +9,7 @@ from hashlib import md5
 from json import dumps, loads
 from os import makedirs, remove, replace
 from os.path import basename, dirname, exists, getmtime, join
-from re import IGNORECASE, search, sub
+from re import search
 from time import time
 from socket import timeout as SocketTimeout
 from urllib.error import HTTPError, URLError
@@ -17,9 +17,11 @@ from urllib.parse import urlencode
 from traceback import format_exc
 from urllib.request import Request, urlopen
 
+from provider.Common import MOVIE_SEARCH_ORDER, SERIES_SEARCH_ORDER, candidate_title_year, image_extension, normalize_text, safe_int
+
 try:
 	from E2MDBProviders import providers
-	from provider.Consts import Fields
+	from provider.Common import Fields
 except Exception as err:
 	providers = None
 	Fields = None
@@ -41,43 +43,10 @@ except Exception:
 	provider_wikimedia = None
 
 
-DEFAULT_SERIES_ORDER = {
-	"tvdb": True,
-	"tmdb": True,
-	"tvmaze": False,
-	"cinemeta": False,
-	"anime": False,
-	"kitsu": False,
-	"omdb": True,
-	"imdb": False,
-}
-DEFAULT_MOVIE_ORDER = {
-	"tmdb": True,
-	"cinemeta": False,
-	"anime": False,
-	"kitsu": False,
-	"tvdb": True,
-	"omdb": True,
-	"imdb": False,
-}
 SERIES_CACHE_MAX = 20  # episode indexes can run into thousands of entries (e.g. daily shows), cap memory use
 SEASON_CACHE_MAX = 50
 SERIES_FILE_MAX_AGE = 7 * 86400  # reload series details, episode index and season details from the provider after 7 days
 SERIES_FILE_MIN_AGE = 86400  # an episode not found in the index triggers a reload at most once a day per series
-
-
-def safe_int(value, default=0):
-	try:
-		return int(value)
-	except Exception:
-		return default
-
-
-def normalize_text(value):
-	value = str(value or "").strip().lower()
-	value = sub(r"[._\-]+", " ", value)
-	value = sub(r"[^a-z0-9äöüß ]+", " ", value)
-	return sub(r"\s+", " ", value).strip()
 
 
 def extract_year(*values):
@@ -304,8 +273,8 @@ class BackendProviderEnricher:
 			"fanart": artwork_settings.get("fanart_api_key", ""),
 			"fanart_active": bool(artwork_settings.get("fanart_enabled", False)),
 		}
-		series_order = dict(DEFAULT_SERIES_ORDER)
-		movie_order = dict(DEFAULT_MOVIE_ORDER)
+		series_order = dict(SERIES_SEARCH_ORDER)
+		movie_order = dict(MOVIE_SEARCH_ORDER)
 		series_order["tmdb"] = bool(provider_settings.get("tmdb_enabled", True))
 		movie_order["tmdb"] = bool(provider_settings.get("tmdb_enabled", True))
 		series_order["tvdb"] = bool(provider_settings.get("tvdb_enabled", True))
@@ -347,24 +316,24 @@ class BackendProviderEnricher:
 			self.error = f"provider start failed: {err}"
 			return self.error
 
-	def candidate_titles(self, item):
-		candidates = [value for value in item.get("search_candidates", []) if str(value or "").strip()] if isinstance(item.get("search_candidates"), list) else []
-		if not candidates:
-			candidates = [item.get(key, "") for key in ("provider_title", "series_title", "movie_title", "title", "description")]
+	def candidate_titles(self, item):  # returns (title, year) tuples, e.g. [('Mayday - Alarm im Cockpit', ''), ('Mayday', '')]
+		# Scanner items carry (title, year) tuples (lists after the JSON round trip), Live/EPG items plain strings.
+		candidates = [candidate_title_year(x) for x in item.get("search_candidates", [])] if isinstance(item.get("search_candidates"), list) else []
+		if not any(title for title, year in candidates):
+			candidates = [candidate_title_year(item.get(key, "")) for key in ("provider_title", "series_title", "movie_title", "title", "description")]
 		# keep order while filtering duplicates/noise
 		result, seen = [], set()
-		for value in candidates:
-			text = str(value or "").strip()
+		for text, year in candidates:
 			if not text:
 				continue
 			# avoid full long descriptions as first-class title candidates
 			if len(text) > 120:
 				text = text[:120].rsplit(" ", 1)[0]
-			key = normalize_text(text)
-			if not key or key in seen:
+			key = (normalize_text(text), year)
+			if not key[0] or key in seen:
 				continue
 			seen.add(key)
-			result.append(text)
+			result.append((text, year))
 		return result[:6]
 
 	def _score_result(self, item, result):
@@ -960,10 +929,11 @@ class BackendProviderEnricher:
 		matches = []
 		last_error = ""
 		type_unknown = any(not str(item.get(key) or "").strip() for key in ("estimated_media_type", "provider_media_type"))
-		for title in self.candidate_titles(item):
-			searched.append({"title": title, "media_type": media_type, "year": year, "language": language})
+		for title, title_year in self.candidate_titles(item):
+			search_year = title_year or year
+			searched.append({"title": title, "media_type": media_type, "year": search_year, "language": language})
 			try:
-				results = providers.gather_providers_info(title, media_type, year, prioritize_tmdb=type_unknown)
+				results = providers.gather_providers_info(title, media_type, search_year, prioritize_tmdb=type_unknown)
 				if results:
 					matches.extend([dict(result) for result in results if isinstance(result, dict)])
 				else:
@@ -1186,13 +1156,6 @@ class BackendProviderEnricher:
 			return target_path
 		return self._download_file(url, target_path)
 
-	def _artwork_image_extension(self, url, fallback="jpg"):
-		match = search(r"\.(jpe?g|png|gif|webp)(?=$|[/?#_;&=,])", str(url or ""), IGNORECASE)
-		if match:
-			ext = match.group(1).lower()
-			return "jpg" if ext == "webp" else ext
-		return fallback
-
 	def _reduced_org_path(self, org_path):
 		return str(org_path or "").replace("/media/hdd", "").replace("/media/autofs", "")
 
@@ -1200,7 +1163,7 @@ class BackendProviderEnricher:
 		# Per-file artwork (movies, episode-only stills): keyed by a hash of the
 		# recording's own path, e.g. cache_root/image/5/59bda...jpg
 		org_hash = md5(self._reduced_org_path(org_path).encode()).hexdigest()
-		ext = self._artwork_image_extension(url)
+		ext = image_extension(url)
 		return join(self.cache_root, pic_type, org_hash[0], f"{org_hash}.{ext}")
 
 	def _secondary_artwork_path(self, provider_name, provider_id, pic_type, url):
@@ -1208,7 +1171,7 @@ class BackendProviderEnricher:
 		# cache_root/series/tmdb/12345/cover.jpg, shared by every episode.
 		provider_name = str(provider_name or "unknown").strip().lower() or "unknown"
 		provider_id = str(provider_id or "").strip()
-		ext = self._artwork_image_extension(url)
+		ext = image_extension(url)
 		return join(self.cache_root, "series", provider_name, provider_id, f"{pic_type}.{ext}")
 
 	def _series_artwork_target(self, item, best, pic_type, url):
@@ -1238,7 +1201,7 @@ class BackendProviderEnricher:
 		provider_name = str(provider_name or "unknown").strip().lower() or "unknown"
 		provider_id = str(provider_id or "").strip()
 		season_part = f"S{safe_int(season_no, 0):02d}"
-		ext = self._artwork_image_extension(url)
+		ext = image_extension(url)
 		return join(self.cache_root, "seasons", provider_name, provider_id, season_part, f"{pic_type}.{ext}")
 
 	def _season_poster_url(self, best, season_no):

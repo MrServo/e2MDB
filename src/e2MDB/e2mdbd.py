@@ -25,6 +25,7 @@ except Exception as err:
 else:
 	BACKEND_DATABASE_IMPORT_ERROR = None
 from E2MDBBackendProvider import BackendProviderEnricher
+from provider.Common import safe_int
 from E2MDBBackendMetadataScanner import E2MDBBackendMetadataScanner
 
 CONFIG_DIR = "/etc/enigma2/e2mdb"
@@ -131,13 +132,6 @@ def send_gui_notification(event, source_key="", reason="backend", **payload):
 				client.close()
 		except Exception:
 			pass
-
-
-def safe_int(value, default=0):
-	try:
-		return int(value)
-	except Exception:
-		return default
 
 
 def truthy(value):

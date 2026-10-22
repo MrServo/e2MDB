@@ -353,7 +353,7 @@ def parse_cuts(path):
 	return result
 
 
-def parse_recording(path):  # HOLGER: Habe ich komplett umgeschrieben, damit nicht schon hier ausgefiltert wird. Das sollen dann nachfolgend die einzelnen Funktionen machen.
+def parse_recording(path):
 	"""Return the scanner values e2MDB needs, independent of their sidecar source."""
 	try:
 		# Priority is intentionally value-based: EIT first, then META, then TXT and cuts.

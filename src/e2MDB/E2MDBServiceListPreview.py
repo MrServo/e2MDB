@@ -20,6 +20,7 @@ from Tools.LoadPixmap import LoadPixmap
 from .E2MDBDatabase import resultsdb
 from .E2MDBLiveEPG import E2MDBEPGCandidate
 from . import e2mdb_log_is_verbose, write_log
+from .provider.Common import normalize_text
 
 
 # These IDs are used by the optional OpenATV ServiceList integration.
@@ -196,16 +197,6 @@ def _event_value(event, index, default=""):
 		return default
 
 
-def _normalize_text(value):
-	try:
-		value = (value or "").strip().lower()
-		value = sub(r"[._\-]+", " ", value)
-		value = sub(r"[^a-z0-9äöüß ]+", " ", value)
-		return sub(r"\s+", " ", value).strip()
-	except Exception:
-		return ""
-
-
 def _normalize_service_ref(service_ref):
 	if service_ref is None:
 		return ""
@@ -271,12 +262,12 @@ def _source_key(service_ref, begin_time, title, event_end=0, duration=0):
 			duration_value = 0
 		if begin_value and duration_value:
 			end_value = begin_value + duration_value
-	identity = f"{"epg"}|{service_ref or ""}|{begin_value}|{end_value}|{_normalize_text(title)}"
+	identity = f"{"epg"}|{service_ref or ""}|{begin_value}|{end_value}|{normalize_text(title)}"
 	return md5(identity.encode("utf-8")).hexdigest()
 
 
 def _virtual_path(source_key, title):
-	clean_title = _normalize_text(title).replace(" ", "_") or "event"
+	clean_title = normalize_text(title).replace(" ", "_") or "event"
 	return f"/epg/{source_key}_{clean_title[:80]}.ts"
 
 

@@ -8,20 +8,20 @@
 # For other uses, permission from the authors is necessary.                                            #
 ########################################################################################################
 
+from datetime import datetime
 from json import dump
 from getopt import getopt, GetoptError
 from requests import get, exceptions
 from sys import exit, argv
-from datetime import datetime
 
 try:
-    from .Consts import Fields
+	from .Common import Fields, match_season_episode, set_dict_key
 except ImportError:
-    import sys
-    from pathlib import Path
+	import sys
+	from pathlib import Path
 
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+	sys.path.append(str(Path(__file__).resolve().parents[1]))
+	from Common import Fields, match_season_episode, set_dict_key
 
 try:
 	from .. import write_log
@@ -106,7 +106,7 @@ class ProviderTMDB:
 				if media_type not in self.media_types:  # e.g. media_type 'person'
 					continue
 				norm_dict = {}
-				self.set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
+				set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
 				title = result_dict.get("title", "") or result_dict.get("name", "")  # 'multi' & 'movie' uses 'title', 'tv' uses 'name'
 				if title:
 					language = self.language
@@ -115,26 +115,26 @@ class ProviderTMDB:
 					language = result_dict.get("original_language", "")
 					if not language:
 						language = "en"  # fallback
-				self.set_dict_key(norm_dict, Fields.TITLE, title)
+				set_dict_key(norm_dict, Fields.TITLE, title)
 				countries = "/".join(result_dict.get("origin_country", []) or [result_dict.get("original_language", "")])
-				self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
-				self.set_dict_key(norm_dict, Fields.COUNTRIES, [country.upper() for country in countries.split(", ")][0])
-				self.set_dict_key(norm_dict, Fields.RELEASED, result_dict.get("release_date", 0))  # e.g. '1970-11-29'
+				set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
+				set_dict_key(norm_dict, Fields.COUNTRIES, [country.upper() for country in countries.split(", ")][0])
+				set_dict_key(norm_dict, Fields.RELEASED, result_dict.get("release_date", 0))  # e.g. '1970-11-29'
 				genres = []
 				for genreId in result_dict.get("genre_ids", []):  # [28, 18]
 					for genre in self.all_genres.get(media_type, []):  # {'movie': [(28, 'Action'), (12, 'Abenteuer'), (16, 'Animation'), (18, 'Drama'),...}
 						if genreId == genre[0]:
 							genres.append(genre[1])
-					self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres if genres else []))
-				self.set_dict_key(norm_dict, Fields.OVERVIEW, result_dict.get("overview", ""))  # longtext
+					set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres if genres else []))
+				set_dict_key(norm_dict, Fields.OVERVIEW, result_dict.get("overview", ""))  # longtext
 				vote_average = result_dict.get("vote_average", "")
-				self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(round(vote_average, 1)) if vote_average else "")
+				set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(round(vote_average, 1)) if vote_average else "")
 				cover = result_dict.get("poster_path", "")
-				self.set_dict_key(norm_dict, Fields.COVER_URL, f"{self.img_url}{cover}" if cover else "")
+				set_dict_key(norm_dict, Fields.COVER_URL, f"{self.img_url}{cover}" if cover else "")
 				backdrop = result_dict.get("backdrop_path", "")
-				self.set_dict_key(norm_dict, Fields.BACKDROP_URL, f"{self.img_url}{backdrop}" if backdrop else "")
+				set_dict_key(norm_dict, Fields.BACKDROP_URL, f"{self.img_url}{backdrop}" if backdrop else "")
 				image = result_dict.get("still_path", "")
-				self.set_dict_key(norm_dict, "image_url", f"{self.img_url}{image}" if image else "")
+				set_dict_key(norm_dict, "image_url", f"{self.img_url}{image}" if image else "")
 				tmdb_id = str(result_dict.get("id", 0))
 				err_msg, images_dict = self.get_images_dict(tmdb_id, media_type)
 				if not err_msg:
@@ -145,8 +145,8 @@ class ProviderTMDB:
 						if logo_dict.get("iso_639_1", "") == self.language[:2]:
 							logo_url = logo_dict.get("url", "")
 							break
-					self.set_dict_key(norm_dict, "titlelogo_url", logo_url if logo_url else fallback)
-				self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"tmdb": tmdb_id})  # TMDB don't support foreign provider ids at all (e.g. 'tt0120338' for IMDB)
+					set_dict_key(norm_dict, "titlelogo_url", logo_url if logo_url else fallback)
+				set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"tmdb": tmdb_id})  # TMDB don't support foreign provider ids at all (e.g. 'tt0120338' for IMDB)
 				norm_dicts.append(norm_dict)
 			except Exception as err_msg:
 				write_log(f"{MODULE_NAME}ERROR in module 'create_norm_result_dicts': {err_msg}'")
@@ -199,48 +199,34 @@ class ProviderTMDB:
 
 	def create_norm_movie_dict(self, movie_dict):
 		norm_dict = {}
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
-		self.set_dict_key(norm_dict, Fields.TITLE, movie_dict.get("title", "") or movie_dict.get("original_title", ""))
-		self.set_dict_key(norm_dict, Fields.TAGLINE, movie_dict.get("tagline", ""))
-		self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, "movie")
+		set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
+		set_dict_key(norm_dict, Fields.TITLE, movie_dict.get("title", "") or movie_dict.get("original_title", ""))
+		set_dict_key(norm_dict, Fields.TAGLINE, movie_dict.get("tagline", ""))
+		set_dict_key(norm_dict, Fields.MEDIA_TYPE, "movie")
 		countries = "/".join(movie_dict.get("origin_country", []) or [movie_dict.get("original_language", "")])
-		self.set_dict_key(norm_dict, Fields.COUNTRIES, countries)
-		self.set_dict_key(norm_dict, Fields.RELEASED, movie_dict.get("release_date", ""))
-		self.set_dict_key(norm_dict, Fields.AGE_RATING, movie_dict.get("age_rating", ""))
+		set_dict_key(norm_dict, Fields.COUNTRIES, countries)
+		set_dict_key(norm_dict, Fields.RELEASED, movie_dict.get("release_date", ""))
+		set_dict_key(norm_dict, Fields.AGE_RATING, movie_dict.get("age_rating", ""))
 		vote_average = movie_dict.get("vote_average", "")
-		self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(round(vote_average, 1)) if vote_average else "")
+		set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(round(vote_average, 1)) if vote_average else "")
 		vote_count = movie_dict.get("vote_count", "")
-		self.set_dict_key(norm_dict, Fields.VOTE_COUNT, str(vote_count) if vote_count else "")
+		set_dict_key(norm_dict, Fields.VOTE_COUNT, str(vote_count) if vote_count else "")
 		genres = self.get_all_genres(movie_dict)
-		self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres if genres else []))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, movie_dict.get("overview", ""))  # longtext
-		self.set_dict_key(norm_dict, Fields.RUNTIME, str(movie_dict.get("runtime", "")))
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
+		set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres if genres else []))
+		set_dict_key(norm_dict, Fields.OVERVIEW, movie_dict.get("overview", ""))  # longtext
+		set_dict_key(norm_dict, Fields.RUNTIME, str(movie_dict.get("runtime", "")))
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
 		for pic_type, pic_url in self.get_pictures_list(movie_dict):
-			self.set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
-			self.set_dict_key(norm_dict, f"{pic_type}_src", "movie")
-		self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"tmdb": str(movie_dict.get("id", 0))})  # TMDB don't support foreign provider ids at all (e.g. 'tt0120338' for IMDB)
+			set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
+			set_dict_key(norm_dict, f"{pic_type}_src", "movie")
+		set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"tmdb": str(movie_dict.get("id", 0))})  # TMDB don't support foreign provider ids at all (e.g. 'tt0120338' for IMDB)
 		crew_list, cast_list = self.get_characters(movie_dict)
-		self.set_dict_key(norm_dict, Fields.CREW, crew_list)
-		self.set_dict_key(norm_dict, Fields.CAST, cast_list)
+		set_dict_key(norm_dict, Fields.CREW, crew_list)
+		set_dict_key(norm_dict, Fields.CAST, cast_list)
 		return norm_dict
 
 	def find_season_episode(self, episode_index, episode_name="", plain_season_episode=""):
-		if episode_index:
-			if plain_season_episode:
-				for episode in episode_index.get("episodes", {}).items():
-					if episode[0] == plain_season_episode:
-						return tuple((episode[0], episode[1][0], episode[1][1]))
-				if str(plain_season_episode).isdigit():
-					for episode in episode_index.get("episodes", {}).items():
-						if episode[0].split("-")[-1] == str(int(plain_season_episode)):
-							return tuple((episode[0], episode[1][0], episode[1][1]))  # season_episode, e.g. ('1-2', '283766', 'Die Warnung')
-			elif episode_name:
-				for episode in episode_index.get("episodes", {}).items():
-					index_name, episode_name = episode[1][1].lower(), episode_name.lower()
-					if episode_name and (index_name in episode_name or episode_name in index_name):
-						return tuple((episode[0], episode[1][0], episode[1][1]))  # season_episode, e.g. ('1-2', '283766', 'Die Warnung')
-		return ()
+		return match_season_episode(episode_index, episode_name, plain_season_episode)  # e.g. ('1-2', '283766', 'Die Warnung')
 
 	def get_all_episodes_by_season_paginated(self, series_id, specific_season=None):
 		err_msg, all_episodes = "", {}
@@ -332,51 +318,51 @@ class ProviderTMDB:
 
 	def create_norm_series_dict(self, series_dict):
 		norm_dict = {}
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
+		set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
 		series_name = series_dict.get("name", "")
-		self.set_dict_key(norm_dict, Fields.TITLE, series_name)
-		self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
+		set_dict_key(norm_dict, Fields.TITLE, series_name)
+		set_dict_key(norm_dict, Fields.MEDIA_TYPE, "series")
 		series_id = str(series_dict.get("id", 0))
-		self.set_dict_key(norm_dict, Fields.SERIES_ID, series_id)
-		self.set_dict_key(norm_dict, Fields.COUNTRIES, series_dict.get("originalCountry", "").upper())
-		self.set_dict_key(norm_dict, Fields.RELEASED, series_dict.get("first_air_date", ""))
-		self.set_dict_key(norm_dict, Fields.AGE_RATING, series_dict.get("age_rating", ""))
+		set_dict_key(norm_dict, Fields.SERIES_ID, series_id)
+		set_dict_key(norm_dict, Fields.COUNTRIES, series_dict.get("originalCountry", "").upper())
+		set_dict_key(norm_dict, Fields.RELEASED, series_dict.get("first_air_date", ""))
+		set_dict_key(norm_dict, Fields.AGE_RATING, series_dict.get("age_rating", ""))
 		vote_average = series_dict.get("vote_average", "")
-		self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(round(vote_average, 1)) if vote_average else "")
+		set_dict_key(norm_dict, Fields.VOTE_AVERAGE, str(round(vote_average, 1)) if vote_average else "")
 		vote_count = series_dict.get("vote_count", "")
-		self.set_dict_key(norm_dict, Fields.VOTE_COUNT, str(vote_count) if vote_count else "")
+		set_dict_key(norm_dict, Fields.VOTE_COUNT, str(vote_count) if vote_count else "")
 		genres = self.get_all_genres(series_dict)
-		self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres if genres else []))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, series_dict.get("overview", ""))  # longtext
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
+		set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres if genres else []))
+		set_dict_key(norm_dict, Fields.OVERVIEW, series_dict.get("overview", ""))  # longtext
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
 		for pic_type, pic_url in self.get_pictures_list(series_dict):
-			self.set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
-			self.set_dict_key(norm_dict, f"{pic_type}_src", "series")
-		self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"tmdb": str(series_dict.get("id", 0))})  # TMDB don't support foreign provider ids at all (e.g. 'tt0120338' for IMDB)
+			set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
+			set_dict_key(norm_dict, f"{pic_type}_src", "series")
+		set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"tmdb": str(series_dict.get("id", 0))})  # TMDB don't support foreign provider ids at all (e.g. 'tt0120338' for IMDB)
 		season_details = []
 		norm_dict[Fields.SEASONS] = {}
 		for season in series_dict.get("seasons", []):
 			season_dict = {}
-			self.set_dict_key(season_dict, Fields.SEASON_NAME, season.get("name", ""))
-			self.set_dict_key(season_dict, "season_id", str(season.get("id", "")))
-			self.set_dict_key(season_dict, Fields.SEASON_NO, str(season.get("season_number", "")))
-			self.set_dict_key(season_dict, Fields.RELEASED, season.get("air_date", ""))
-			self.set_dict_key(season_dict, Fields.OVERVIEW, season.get("overview", ""))  # longtext
+			set_dict_key(season_dict, Fields.SEASON_NAME, season.get("name", ""))
+			set_dict_key(season_dict, "season_id", str(season.get("id", "")))
+			set_dict_key(season_dict, Fields.SEASON_NO, str(season.get("season_number", "")))
+			set_dict_key(season_dict, Fields.RELEASED, season.get("air_date", ""))
+			set_dict_key(season_dict, Fields.OVERVIEW, season.get("overview", ""))  # longtext
 			for pic_type, pic_url in self.get_pictures_list(season):
-				self.set_dict_key(season_dict, f"{pic_type}_url", pic_url)
-				self.set_dict_key(season_dict, f"{pic_type}_src", "season")
+				set_dict_key(season_dict, f"{pic_type}_url", pic_url)
+				set_dict_key(season_dict, f"{pic_type}_src", "season")
 			season_details.append(season_dict)
 		crew_list, cast_list = self.get_characters(series_dict)
-		self.set_dict_key(norm_dict, Fields.CREW, crew_list)
-		self.set_dict_key(norm_dict, Fields.CAST, cast_list)
-		self.set_dict_key(norm_dict, Fields.SEASONS, season_details)
+		set_dict_key(norm_dict, Fields.CREW, crew_list)
+		set_dict_key(norm_dict, Fields.CAST, cast_list)
+		set_dict_key(norm_dict, Fields.SEASONS, season_details)
 		return norm_dict
 
 	def create_norm_episode_index(self, index_dict):
 		norm_dict = {}
-		self.set_dict_key(norm_dict, "provider", "tmdb")
-		self.set_dict_key(norm_dict, "title", index_dict.get("name", ""))
-		self.set_dict_key(norm_dict, "series_id", index_dict.get("id", ""))
+		set_dict_key(norm_dict, "provider", "tmdb")
+		set_dict_key(norm_dict, "title", index_dict.get("name", ""))
+		set_dict_key(norm_dict, "series_id", index_dict.get("id", ""))
 		norm_dict["episodes"] = {}
 		series_id = index_dict.get("id", "")
 		params = {"language": self.language, "api_key": self.api_key}
@@ -394,7 +380,7 @@ class ProviderTMDB:
 					episode_no = episode.get("episode_number", "")
 					name = episode.get("name", "") or f"Episode {episode_no}"  # in case create a episode name
 					entry = (str(episode.get("id", "")), name)
-					self.set_dict_key(norm_dict["episodes"], f"{season_no_resp}-{episode_no}", entry)
+					set_dict_key(norm_dict["episodes"], f"{season_no_resp}-{episode_no}", entry)
 					episode_count += 1
 		write_log(f"{MODULE_NAME}INFO: Created episode index with {episode_count} episodes")
 		return norm_dict
@@ -422,35 +408,35 @@ class ProviderTMDB:
 	def create_norm_season_dict(self, season_dict, series_name="", series_id=""):  # creates season details in a normalized form
 		# Unfortunately, the TMDB 'season' dictionary does not include a 'series_name' or 'series_id', so these must be provided separately if available
 		norm_dict = {}
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
-		self.set_dict_key(norm_dict, Fields.TITLE, series_name or season_dict.get("title", ""))  # try to get it
-		self.set_dict_key(norm_dict, Fields.SERIES_ID, series_id or season_dict.get("series_id", ""))  # try to get it
-		self.set_dict_key(norm_dict, Fields.SEASON_NAME, season_dict.get("name", ""))
-		self.set_dict_key(norm_dict, "season_id", season_dict.get("_id", ""))
-		self.set_dict_key(norm_dict, Fields.SEASON_NO, str(season_dict.get("season_number", "")))
-		self.set_dict_key(norm_dict, Fields.RELEASED, season_dict.get("air_date", ""))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, season_dict.get("overview", ""))  # longtext
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
+		set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
+		set_dict_key(norm_dict, Fields.TITLE, series_name or season_dict.get("title", ""))  # try to get it
+		set_dict_key(norm_dict, Fields.SERIES_ID, series_id or season_dict.get("series_id", ""))  # try to get it
+		set_dict_key(norm_dict, Fields.SEASON_NAME, season_dict.get("name", ""))
+		set_dict_key(norm_dict, "season_id", season_dict.get("_id", ""))
+		set_dict_key(norm_dict, Fields.SEASON_NO, str(season_dict.get("season_number", "")))
+		set_dict_key(norm_dict, Fields.RELEASED, season_dict.get("air_date", ""))
+		set_dict_key(norm_dict, Fields.OVERVIEW, season_dict.get("overview", ""))  # longtext
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
 		for pic_type, pic_url in self.get_pictures_list(season_dict):
-			self.set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
-			self.set_dict_key(norm_dict, f"{pic_type}_src", "season")
+			set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
+			set_dict_key(norm_dict, f"{pic_type}_src", "season")
 		episodes = []
 		for episode in season_dict.get("episodes", []):
 			episode_dict = {}
-			self.set_dict_key(episode_dict, Fields.EPISODE_NAME, episode.get("name", ""))
-			self.set_dict_key(episode_dict, Fields.EPISODE_ID, str(episode.get("id", "")))
-			self.set_dict_key(episode_dict, Fields.EPISODE_NO, str(episode.get("episode_number", "")))
-			self.set_dict_key(episode_dict, Fields.RELEASED, episode.get("air_date", ""))
-			self.set_dict_key(episode_dict, Fields.OVERVIEW, episode.get("overview", ""))  # longtext
-			self.set_dict_key(episode_dict, Fields.RUNTIME, str(episode.get("runtime", "")))
+			set_dict_key(episode_dict, Fields.EPISODE_NAME, episode.get("name", ""))
+			set_dict_key(episode_dict, Fields.EPISODE_ID, str(episode.get("id", "")))
+			set_dict_key(episode_dict, Fields.EPISODE_NO, str(episode.get("episode_number", "")))
+			set_dict_key(episode_dict, Fields.RELEASED, episode.get("air_date", ""))
+			set_dict_key(episode_dict, Fields.OVERVIEW, episode.get("overview", ""))  # longtext
+			set_dict_key(episode_dict, Fields.RUNTIME, str(episode.get("runtime", "")))
 			for pic_type, pic_url in self.get_pictures_list(episode):
-				self.set_dict_key(episode_dict, f"{pic_type}_url", pic_url)
-				self.set_dict_key(episode_dict, f"{pic_type}_src", "episode")
+				set_dict_key(episode_dict, f"{pic_type}_url", pic_url)
+				set_dict_key(episode_dict, f"{pic_type}_src", "episode")
 			episodes.append(episode_dict)
 		crew_list, cast_list = self.get_characters(season_dict)
-		self.set_dict_key(norm_dict, Fields.CREW, crew_list)
-		self.set_dict_key(norm_dict, Fields.CAST, cast_list)
-		self.set_dict_key(norm_dict, "episodes", episodes)
+		set_dict_key(norm_dict, Fields.CREW, crew_list)
+		set_dict_key(norm_dict, Fields.CAST, cast_list)
+		set_dict_key(norm_dict, "episodes", episodes)
 		return norm_dict
 
 	def get_episode_details(self, series_id="", episode_id="", season_no="", episode_no=""):  # instead of episode_id, TMDB only uses series_id, season_no and episode_no
@@ -470,23 +456,23 @@ class ProviderTMDB:
 	def create_norm_episode_dict(self, episode_dict):  # creates episode details in a normalized form
 		norm_dict = {}
 		if episode_dict:
-			self.set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
+			set_dict_key(norm_dict, Fields.PROVIDER, "tmdb")
 			# TMDB don't support "series_id" in episode results
-			self.set_dict_key(norm_dict, Fields.EPISODE_NAME, episode_dict.get("name", ""))
-			self.set_dict_key(norm_dict, Fields.EPISODE_ID, str(episode_dict.get("id", "")))
-			self.set_dict_key(norm_dict, Fields.SEASON_NO, str(episode_dict.get("season_number", "")))
-			self.set_dict_key(norm_dict, Fields.EPISODE_NO, str(episode_dict.get("episode_number", "")))
-			self.set_dict_key(norm_dict, Fields.RELEASED, episode_dict.get("air_date", ""))
-			self.set_dict_key(norm_dict, Fields.OVERVIEW, episode_dict.get("overview", ""))  # longtext
-			self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, episode_dict.get("vote_average", ""))
-			self.set_dict_key(norm_dict, Fields.VOTE_COUNT, episode_dict.get("vote_count", ""))
-			self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
+			set_dict_key(norm_dict, Fields.EPISODE_NAME, episode_dict.get("name", ""))
+			set_dict_key(norm_dict, Fields.EPISODE_ID, str(episode_dict.get("id", "")))
+			set_dict_key(norm_dict, Fields.SEASON_NO, str(episode_dict.get("season_number", "")))
+			set_dict_key(norm_dict, Fields.EPISODE_NO, str(episode_dict.get("episode_number", "")))
+			set_dict_key(norm_dict, Fields.RELEASED, episode_dict.get("air_date", ""))
+			set_dict_key(norm_dict, Fields.OVERVIEW, episode_dict.get("overview", ""))  # longtext
+			set_dict_key(norm_dict, Fields.VOTE_AVERAGE, episode_dict.get("vote_average", ""))
+			set_dict_key(norm_dict, Fields.VOTE_COUNT, episode_dict.get("vote_count", ""))
+			set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)  # add timestamp
 			for pic_type, pic_url in self.get_pictures_list(episode_dict):
-				self.set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
-				self.set_dict_key(norm_dict, f"{pic_type}_src", "episode")
+				set_dict_key(norm_dict, f"{pic_type}_url", pic_url)
+				set_dict_key(norm_dict, f"{pic_type}_src", "episode")
 			crew_list, cast_list = self.get_characters(episode_dict)
-			self.set_dict_key(norm_dict, Fields.CREW, crew_list)
-			self.set_dict_key(norm_dict, Fields.CAST, cast_list)
+			set_dict_key(norm_dict, Fields.CREW, crew_list)
+			set_dict_key(norm_dict, Fields.CAST, cast_list)
 		return norm_dict
 
 	def get_asset_details(self, category, asset_id, season_no="", episode_no=""):  # get asset infos acc. category, assetId or (asetId+SeasonNo+EpisodeNo)
@@ -577,12 +563,12 @@ class ProviderTMDB:
 		for staff in [("crew", crew_list), ("guest_stars", cast_list), ("cast", cast_list)]:  # (originalKey, staffList)
 			for profile_dict in tmdb_dict.get(staff[0], []):
 				staff_dict = {}
-				self.set_dict_key(staff_dict, Fields.JOB, profile_dict.get("job", ""))
-				self.set_dict_key(staff_dict, Fields.NAME, profile_dict.get("name", ""))
-				self.set_dict_key(staff_dict, Fields.CHARACTER, profile_dict.get("character", ""))
-				self.set_dict_key(staff_dict, Fields.PROFILE_ID, str(profile_dict.get("id", "")))
+				set_dict_key(staff_dict, Fields.JOB, profile_dict.get("job", ""))
+				set_dict_key(staff_dict, Fields.NAME, profile_dict.get("name", ""))
+				set_dict_key(staff_dict, Fields.CHARACTER, profile_dict.get("character", ""))
+				set_dict_key(staff_dict, Fields.PROFILE_ID, str(profile_dict.get("id", "")))
 				image = profile_dict.get("profile_path", "")
-				self.set_dict_key(staff_dict, Fields.PROFILE_URL, f"{self.img_url}{image}" if image else "")  # e.g. '/eZgBiSDTc25mEjMoyRKZTa2ggbm.jpg'
+				set_dict_key(staff_dict, Fields.PROFILE_URL, f"{self.img_url}{image}" if image else "")  # e.g. '/eZgBiSDTc25mEjMoyRKZTa2ggbm.jpg'
 				staff[1].append(staff_dict)
 		return crew_list, cast_list
 
@@ -611,11 +597,6 @@ class ProviderTMDB:
 		except exceptions.RequestException as err_msg:
 			return err_msg, {}
 
-	def set_dict_key(self, dictionary, key, value):
-		if value:
-			dictionary[key] = value
-
-
 provider_tmdb = ProviderTMDB()
 
 
@@ -635,7 +616,7 @@ def main(argv):  # shell interface
 			"Example: python TMDB.py -q the+blacklist -l de-DE -s 1 -e 2 -m series -a {your personal api-key}\n"
 			"-q, --query <options>\t\tget result list from TMDB search'\n"
 			"-s, --season_no <digit>\t\tseason Number as digit\n"
-			"-e, --episode_no <digit>\t\tepisode number as digit\n"
+			"-e, --episode_no <digit>\tepisode number as digit\n"
 			"-l, --language <options>\tset language formatted like 'en'\n"
 			"-m, --media_type <options>\tset media type 'multi', 'movie' or 'series' (default 'multi')\n"
 			"-a, --api_key <your api key>\tpersonal key for accessing the AP server\n")

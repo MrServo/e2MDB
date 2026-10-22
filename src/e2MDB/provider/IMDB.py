@@ -10,20 +10,18 @@
 
 from datetime import datetime
 from getopt import getopt, GetoptError
-from html import unescape
 from json import dumps, dump
-from re import sub
 from requests import post, exceptions
 from sys import exit, argv
 
 try:
-    from .Consts import Fields
+    from .Common import Fields, html_to_text, set_dict_key
 except ImportError:
     import sys
     from pathlib import Path
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
-    from Consts import Fields
+    from Common import Fields, html_to_text, set_dict_key
 
 try:
 	from .. import write_log
@@ -96,13 +94,13 @@ class ProviderIMDB:
 				if year and release_year and str(release_year) != str(year):
 					continue
 				norm_dict = {}
-				self.set_dict_key(norm_dict, Fields.PROVIDER, "imdb")
-				self.set_dict_key(norm_dict, Fields.TITLE, self._get(result, ("titleText", "text")) or self._get(result, ("originalTitleText", "text")))
-				self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, result_media_type)
-				self.set_dict_key(norm_dict, Fields.RELEASED, str(release_year) if release_year else "")
-				self.set_dict_key(norm_dict, Fields.OVERVIEW, self._get(result, ("plot", "plotText", "plainText")))
-				self.set_dict_key(norm_dict, Fields.COVER_URL, self._get(result, ("primaryImage", "url")))
-				self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
+				set_dict_key(norm_dict, Fields.PROVIDER, "imdb")
+				set_dict_key(norm_dict, Fields.TITLE, self._get(result, ("titleText", "text")) or self._get(result, ("originalTitleText", "text")))
+				set_dict_key(norm_dict, Fields.MEDIA_TYPE, result_media_type)
+				set_dict_key(norm_dict, Fields.RELEASED, str(release_year) if release_year else "")
+				set_dict_key(norm_dict, Fields.OVERVIEW, self._get(result, ("plot", "plotText", "plainText")))
+				set_dict_key(norm_dict, Fields.COVER_URL, self._get(result, ("primaryImage", "url")))
+				set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
 				self._cache_search_result(imdb_id, norm_dict)
 				norm_dicts.append(norm_dict)
 			except Exception as err_msg:
@@ -157,9 +155,9 @@ class ProviderIMDB:
 					err_msg = ""
 			else:
 				episode_details = self.create_norm_title_dict(title_dict, expected_media_type="episode")
-			self.set_dict_key(episode_details, Fields.SERIES_ID, series_id)
-			self.set_dict_key(episode_details, Fields.SEASON_NO, str(season_no) if season_no else "")
-			self.set_dict_key(episode_details, Fields.EPISODE_NO, str(episode_no) if episode_no else "")
+			set_dict_key(episode_details, Fields.SERIES_ID, series_id)
+			set_dict_key(episode_details, Fields.SEASON_NO, str(season_no) if season_no else "")
+			set_dict_key(episode_details, Fields.EPISODE_NO, str(episode_no) if episode_no else "")
 		else:
 			err_msg = f"{MODULE_NAME}ERROR in module 'IMDB.get_episode_details': missing or invalid parameter 'episode_id' (must be IMDb ID like 'tt0944947')."
 		return err_msg, episode_details
@@ -205,32 +203,32 @@ class ProviderIMDB:
 		elif expected_media_type == "episode" and media_type != "episode":
 			media_type = "episode"
 		imdb_id = self._get(title_dict, "id")
-		self.set_dict_key(norm_dict, Fields.PROVIDER, "imdb")
-		self.set_dict_key(norm_dict, Fields.TITLE, self._get(title_dict, ("titleText", "text")) or self._get(title_dict, ("originalTitleText", "text")))
-		self.set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
+		set_dict_key(norm_dict, Fields.PROVIDER, "imdb")
+		set_dict_key(norm_dict, Fields.TITLE, self._get(title_dict, ("titleText", "text")) or self._get(title_dict, ("originalTitleText", "text")))
+		set_dict_key(norm_dict, Fields.MEDIA_TYPE, media_type)
 		if media_type == "series":
-			self.set_dict_key(norm_dict, Fields.SERIES_ID, imdb_id)
+			set_dict_key(norm_dict, Fields.SERIES_ID, imdb_id)
 		elif media_type == "episode":
-			self.set_dict_key(norm_dict, Fields.EPISODE_ID, imdb_id)
-		self.set_dict_key(norm_dict, Fields.RELEASED, self._release_date(title_dict))
-		self.set_dict_key(norm_dict, Fields.AGE_RATING, self._get(title_dict, ("certificate", "rating")))
-		self.set_dict_key(norm_dict, Fields.COUNTRIES, "/".join([self._get(c, "text") for c in self._get(title_dict, ("countriesOfOrigin", "countries"), []) if self._get(c, "text")]))
+			set_dict_key(norm_dict, Fields.EPISODE_ID, imdb_id)
+		set_dict_key(norm_dict, Fields.RELEASED, self._release_date(title_dict))
+		set_dict_key(norm_dict, Fields.AGE_RATING, self._get(title_dict, ("certificate", "rating")))
+		set_dict_key(norm_dict, Fields.COUNTRIES, "/".join([self._get(c, "text") for c in self._get(title_dict, ("countriesOfOrigin", "countries"), []) if self._get(c, "text")]))
 		genres = [self._get(genre, "text") for genre in self._get(title_dict, ("genres", "genres"), []) if self._get(genre, "text")]
-		self.set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres))
-		self.set_dict_key(norm_dict, Fields.OVERVIEW, self._overview(title_dict))
-		self.set_dict_key(norm_dict, Fields.RUNTIME, self._runtime_minutes(title_dict))
-		self.set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(title_dict))
-		self.set_dict_key(norm_dict, Fields.VOTE_COUNT, str(self._get(title_dict, ("ratingsSummary", "voteCount"))) if self._get(title_dict, ("ratingsSummary", "voteCount")) else "")
+		set_dict_key(norm_dict, Fields.GENRES, ", ".join(genres))
+		set_dict_key(norm_dict, Fields.OVERVIEW, self._overview(title_dict))
+		set_dict_key(norm_dict, Fields.RUNTIME, self._runtime_minutes(title_dict))
+		set_dict_key(norm_dict, Fields.VOTE_AVERAGE, self._rating(title_dict))
+		set_dict_key(norm_dict, Fields.VOTE_COUNT, str(self._get(title_dict, ("ratingsSummary", "voteCount"))) if self._get(title_dict, ("ratingsSummary", "voteCount")) else "")
 		cover_url = self._get(title_dict, ("primaryImage", "url"))
-		self.set_dict_key(norm_dict, Fields.COVER_URL, cover_url)
-		self.set_dict_key(norm_dict, Fields.COVER_SRC, media_type)
-		self.set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
-		self.set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
+		set_dict_key(norm_dict, Fields.COVER_URL, cover_url)
+		set_dict_key(norm_dict, Fields.COVER_SRC, media_type)
+		set_dict_key(norm_dict, Fields.LAST_UPDATED, self.last_update)
+		set_dict_key(norm_dict, Fields.PROVIDER_IDS, {"imdb": imdb_id})
 		crew_list, cast_list = self.get_characters(title_dict)
-		self.set_dict_key(norm_dict, Fields.CREW, crew_list)
-		self.set_dict_key(norm_dict, Fields.CAST, cast_list)
+		set_dict_key(norm_dict, Fields.CREW, crew_list)
+		set_dict_key(norm_dict, Fields.CAST, cast_list)
 		if media_type == "series":
-			self.set_dict_key(norm_dict, Fields.SEASONS, [])
+			set_dict_key(norm_dict, Fields.SEASONS, [])
 		return norm_dict
 
 	def get_characters(self, title_dict):
@@ -241,9 +239,9 @@ class ProviderIMDB:
 				job = self._get(credit, ("category", "text"))
 				name = self._get(credit, ("name", "nameText", "text"))
 				profile_id = self._get(credit, ("name", "id"))
-				self.set_dict_key(staff_dict, Fields.JOB, job)
-				self.set_dict_key(staff_dict, Fields.NAME, name)
-				self.set_dict_key(staff_dict, Fields.PROFILE_ID, profile_id)
+				set_dict_key(staff_dict, Fields.JOB, job)
+				set_dict_key(staff_dict, Fields.NAME, name)
+				set_dict_key(staff_dict, Fields.PROFILE_ID, profile_id)
 				if not staff_dict:
 					continue
 				if job and job.lower() in ("actor", "actress", "star", "stars"):
@@ -404,7 +402,7 @@ query TitleStorylineMinimal {
 		details = base.copy()
 		for internal_key in ("_search_title", "_search_year", "_expected_media_type", "_strict_media_type", "_provider_priority"):
 			details.pop(internal_key, None)
-		self.set_dict_key(details, Fields.PROVIDER, "imdb")
+		set_dict_key(details, Fields.PROVIDER, "imdb")
 		if expected_media_type:
 			details[Fields.MEDIA_TYPE] = expected_media_type
 		provider_ids = details.get(Fields.PROVIDER_IDS, {}) or {}
@@ -413,11 +411,11 @@ query TitleStorylineMinimal {
 		provider_ids["imdb"] = imdb_id
 		details[Fields.PROVIDER_IDS] = provider_ids
 		if expected_media_type == "series":
-			self.set_dict_key(details, Fields.SERIES_ID, imdb_id)
+			set_dict_key(details, Fields.SERIES_ID, imdb_id)
 		elif expected_media_type == "episode":
-			self.set_dict_key(details, Fields.EPISODE_ID, imdb_id)
-		self.set_dict_key(details, Fields.COVER_SRC, expected_media_type or details.get(Fields.MEDIA_TYPE, ""))
-		self.set_dict_key(details, Fields.LAST_UPDATED, self.last_update)
+			set_dict_key(details, Fields.EPISODE_ID, imdb_id)
+		set_dict_key(details, Fields.COVER_SRC, expected_media_type or details.get(Fields.MEDIA_TYPE, ""))
+		set_dict_key(details, Fields.LAST_UPDATED, self.last_update)
 		return details
 
 	def _headers(self):
@@ -499,7 +497,7 @@ query TitleStorylineMinimal {
 		for path in (("plot", "plotText", "plainText"), ("outlines", "edges", "node", "plotText", "plaidHtml"), ("summaries", "edges", "node", "plotText", "plaidHtml"), ("synopses", "edges", "node", "plotText", "plaidHtml")):
 			text = self._get(title_dict, path)
 			if text:
-				return self.html_to_text(text)
+				return html_to_text(text)
 		return ""
 
 	def _runtime_minutes(self, title_dict):
@@ -534,18 +532,6 @@ query TitleStorylineMinimal {
 				return default
 			json_obj = json_obj[key]
 		return json_obj if json_obj is not None else default
-
-	def html_to_text(self, html):
-		if not html:
-			return ""
-		if isinstance(html, bytes):
-			html = html.decode("utf-8", "replace")
-		return unescape(sub(r"<br\s*/?>", "\n", sub(r"<.*?>", "", html))).strip()
-
-	def set_dict_key(self, dictionary, key, value):
-		if value and value != "N/A":
-			dictionary[key] = value
-
 
 provider_imdb = ProviderIMDB()
 
