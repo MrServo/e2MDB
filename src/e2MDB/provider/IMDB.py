@@ -533,6 +533,7 @@ query TitleStorylineMinimal {
 			json_obj = json_obj[key]
 		return json_obj if json_obj is not None else default
 
+
 provider_imdb = ProviderIMDB()
 
 

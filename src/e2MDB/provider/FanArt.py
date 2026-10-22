@@ -311,6 +311,7 @@ class ProviderFanArt:
 				return str(err_msg), {}
 		return last_error or "API server access ERROR", {}
 
+
 provider_fanart = ProviderFanArt()
 
 

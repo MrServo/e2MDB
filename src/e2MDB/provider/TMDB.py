@@ -597,6 +597,7 @@ class ProviderTMDB:
 		except exceptions.RequestException as err_msg:
 			return err_msg, {}
 
+
 provider_tmdb = ProviderTMDB()
 
 

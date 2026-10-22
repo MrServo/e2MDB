@@ -296,6 +296,7 @@ class ProviderKITSU:
 		except ValueError as err_msg:
 			return err_msg, {}
 
+
 provider_kitsu = ProviderKITSU()
 
 

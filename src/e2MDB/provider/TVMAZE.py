@@ -293,6 +293,7 @@ class ProviderTVMAZE:
 		except ValueError as err_msg:
 			return err_msg, {}
 
+
 provider_tvmaze = ProviderTVMAZE()
 
 

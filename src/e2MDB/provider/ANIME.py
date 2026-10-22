@@ -389,6 +389,7 @@ query ($id: Int, $type: MediaType) {
 		except ValueError as err_msg:
 			return err_msg, {}
 
+
 provider_anime = ProviderANIME()
 
 
