@@ -10,50 +10,50 @@
 # PYTHON IMPORTS
 from dataclasses import dataclass
 from datetime import datetime
-from time import time
-from json import load, dump
+from json import dump, load
 from os import makedirs, remove, walk
-from os.path import join, isfile, isdir, abspath, basename, exists
+from os.path import abspath, basename, exists, isdir, isfile, join
+from time import time
 from twisted.internet import reactor
 from twisted.internet.reactor import callInThread
 
-# ENIGMA IMPORTS
-from enigma import eTimer, eServiceCenter, eServiceReference, eEPGCache
+from enigma import eEPGCache, eServiceCenter, eServiceReference, eTimer
+
+from Scheduler import addFunctionTimer
+from ServiceReference import ServiceReference
 from Components.ActionMap import ActionMap, HelpableActionMap
-from Components.config import config, ConfigSelection, ConfigYesNo, configfile, setOnSaveCallback
+from Components.config import ConfigSelection, ConfigYesNo, config, configfile, setOnSaveCallback
 from Components.ProgressBar import ProgressBar
 from Components.SelectionList import SelectionList
 from Components.Sources.List import List
 from Components.Sources.StaticText import StaticText
 from Plugins.Plugin import PluginDescriptor
-from Scheduler import addFunctionTimer
 from Screens.ChoiceBox import ChoiceBox
-from Screens.EventView import EventViewSimple, EventViewEPGSelect
+from Screens.EventView import EventViewEPGSelect, EventViewSimple
 from Screens.LocationBox import LocationBox
 from Screens.MessageBox import MessageBox
 from Screens.Screen import Screen
 from Screens.Setup import Setup
-from ServiceReference import ServiceReference
 
-# PLUGIN IMPORTS
-from . import PluginLanguageDomain, __version__, e2mdbglobals, get_database_dir, write_log, rotate_e2mdb_log, register_e2mdb_servicelist_infokey, E2MDB_SERVICE_LIST_EVENTVIEW_KEY, E2MDB_SERVICE_LIST_EPG_KEY, _
-from .E2MDBDatabase import resultsdb
-from .E2MDBHelper import E2MDBHelper
-from .E2MDBEventViewSimple import E2MDBEventViewSimple
-from .E2MDBEPGBridge import install_epg_selection_hooks
-from .E2MDBChannelSelectionBridge import install_channel_selection_hooks
-from .E2MDBInfoBarBridge import install_infobar_hooks
-from .E2MDBComponentMeta import install_component_meta_hooks
-from .E2MDBPrefillManager import run_prefill_background, request_prefill_background, prefill_background_running
-from .E2MDBCleanupManager import start_cleanup_manager
-from .E2MDBSchedulerTasks import start_scan_task, stop_scan_task, start_cleanup_task, stop_cleanup_task, start_sqlite_maintenance_task, stop_sqlite_maintenance_task
-from .E2MDBPrefillConfig import E2MDBPrefillServices
-from .provider.Common import CACHE_DIRS
-from .E2MDBIgnoreConfig import E2MDBIgnorePatterns
-from .E2MDBBackendConfig import init_backend_config, ensure_backend_dirs, PATHS_FILE, RUNTIME_DIR
+from . import E2MDB_SERVICE_LIST_EPG_KEY, E2MDB_SERVICE_LIST_EVENTVIEW_KEY, PluginLanguageDomain, _, __version__, e2mdbglobals, get_database_dir, register_e2mdb_servicelist_infokey, rotate_e2mdb_log, write_log
 from .E2MDBBackendClient import backend_request, run_backend_live_cleanup, start_backend_scan_and_enrich
+from .E2MDBBackendConfig import PATHS_FILE, RUNTIME_DIR, ensure_backend_dirs, init_backend_config
 from .E2MDBBackendNotify import start_backend_notify_listener
+from .E2MDBChannelSelectionBridge import install_channel_selection_hooks
+from .E2MDBCleanupManager import start_cleanup_manager
+from .E2MDBComponentMeta import install_component_meta_hooks
+from .E2MDBDatabase import resultsdb
+from .E2MDBEPGBridge import install_epg_selection_hooks
+from .E2MDBEventViewSimple import E2MDBEventViewSimple
+from .E2MDBHelper import E2MDBHelper
+from .E2MDBIgnoreConfig import E2MDBIgnorePatterns
+from .E2MDBInfoBarBridge import install_infobar_hooks
+from .E2MDBMovieLibrary import registerMovieLibrary
+from .E2MDBPrefillConfig import E2MDBPrefillServices
+from .E2MDBPrefillManager import prefill_background_running, request_prefill_background, run_prefill_background
+from .E2MDBSchedulerTasks import start_cleanup_task, start_scan_task, start_sqlite_maintenance_task, stop_cleanup_task, stop_scan_task, stop_sqlite_maintenance_task
 from .E2MDBServiceListIntegration import install_service_list_event_pixmap_provider
+from .provider.Common import CACHE_DIRS
 
 
 BACKEND_PHASE_MSGIDS = {
@@ -2495,7 +2495,8 @@ class E2MDBInfoBox(Screen):
 
 
 def E2MDBshowEventInformation(self):
-	if not _useE2MDBMediaEventView():
+	# AML owns movie details, including technical file information, in both views.
+	if hasattr(self, "libraryActive") or not _useE2MDBMediaEventView():
 		old_show_event_information(self)
 		return
 	current = self.getCurrent()
@@ -3081,6 +3082,7 @@ def start_gui_command_bridge(session):
 
 def sessionstart(reason, **kwargs):
 	global old_show_event_information
+	registerMovieLibrary(reason)
 	if reason == 0 and 'session' in kwargs:
 		from Screens.MovieSelection import MovieSelection
 		old_show_event_information = MovieSelection.showEventInformation

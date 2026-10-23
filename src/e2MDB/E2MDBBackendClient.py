@@ -6,6 +6,7 @@
 
 from json import dumps, loads
 from socket import AF_UNIX, SOCK_STREAM, socket
+from time import monotonic
 
 from .E2MDBBackendConfig import COMMAND_SOCKET
 
@@ -21,15 +22,26 @@ class E2MDBBackendClient:
 		data = (dumps(message, sort_keys=True) + "\n").encode("utf-8")
 		client = socket(AF_UNIX, SOCK_STREAM)
 		try:
+			deadline = monotonic() + self.timeout
 			client.settimeout(self.timeout)
 			client.connect(self.socket_path)
+			remaining = deadline - monotonic()
+			if remaining <= 0:
+				raise TimeoutError("e2MDB command deadline exceeded")
+			client.settimeout(remaining)
 			client.sendall(data)
 			buffer = b""
 			while b"\n" not in buffer:
+				remaining = deadline - monotonic()
+				if remaining <= 0:
+					raise TimeoutError("e2MDB command deadline exceeded")
+				client.settimeout(remaining)
 				chunk = client.recv(65536)
 				if not chunk:
 					break
 				buffer += chunk
+				if len(buffer) > 4 * 1024 * 1024:
+					raise ValueError("e2MDB command response exceeds 4 MiB")
 			line = buffer.split(b"\n", 1)[0].decode("utf-8", "replace").strip()
 			return loads(line) if line else {"success": False, "error": "empty response"}
 		finally:

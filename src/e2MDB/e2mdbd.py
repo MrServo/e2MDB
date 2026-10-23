@@ -5,8 +5,8 @@
 # Clean-start backend scaffold: Twisted web/API, Unix command socket, backend jobs and status.  #
 ########################################################################################################
 
-from mimetypes import guess_type
 from json import dump, dumps, load, loads
+from mimetypes import guess_type
 from os import fsync, getpid, makedirs, remove, rename
 from os.path import abspath, basename, dirname, exists, getmtime, getsize, isfile, join, realpath
 from signal import SIGHUP, SIGTERM, signal
@@ -27,6 +27,7 @@ else:
 from E2MDBBackendProvider import BackendProviderEnricher
 from provider.Common import safe_int
 from E2MDBBackendMetadataScanner import E2MDBBackendMetadataScanner
+from E2MDBMovieChanges import applyMovieChanges
 
 CONFIG_DIR = "/etc/enigma2/e2mdb"
 RUNTIME_DIR = "/var/run/e2mdb"
@@ -1824,6 +1825,22 @@ class CommandSocketServer(Thread):
 			return self.job_manager.get_recordings(offset=request.get("offset", 0), limit=request.get("limit", 50), query=request.get("query", ""))
 		if command == "recording":
 			return self.job_manager.get_recording(request.get("id") or request.get("path") or "")
+		if command == "movie_details":
+			if self.job_manager.database:
+				return self.job_manager.database.getMovieDetails(request.get("paths", []))
+			return {"success": False, "error": "database unavailable"}
+		if command == "movie_members":
+			if self.job_manager.database:
+				return self.job_manager.database.getMovieMembers(request.get("id", ""), request.get("page", 1), request.get("season"), request.get("hiddenFolders", []))
+			return {"success": False, "error": "database unavailable"}
+		if command == "movie_catalogue":
+			if self.job_manager.database:
+				return self.job_manager.database.getMovieCatalogue(request)
+			return {"success": False, "error": "database unavailable"}
+		if command == "movie_changes":
+			if self.job_manager.database:
+				return applyMovieChanges(self.job_manager.database, request.get("events", []))
+			return {"success": False, "error": "database unavailable"}
 		if command == "browser_status":
 			return self.job_manager.get_browser_status()
 		if command == "browser":

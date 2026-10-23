@@ -1,17 +1,19 @@
 from datetime import datetime
-from os import listdir, makedirs, remove
-from zipfile import ZIP_DEFLATED, ZipFile
 from gettext import bindtextdomain, dgettext, gettext
-from os.path import dirname, join, isfile, getsize, basename
+from os import listdir, makedirs, remove
+from os.path import basename, dirname, getsize, isfile, join
 from secrets import choice
 from sys import modules
-from enigma import getDesktop
-from Components.config import config, ConfigInteger, ConfigSelection, ConfigSubsection, ConfigText, ConfigYesNo
-from Components.Language import language
-from Components.International import international
-from Tools.Directories import resolveFilename, SCOPE_PLUGINS
+from zipfile import ZIP_DEFLATED, ZipFile
 
-__version__ = "1.3"
+from enigma import getDesktop
+
+from Components.config import ConfigInteger, ConfigSelection, ConfigSubsection, ConfigText, ConfigYesNo, config
+from Components.International import international
+from Components.Language import language
+from Tools.Directories import SCOPE_PLUGINS, resolveFilename
+
+__version__ = "1.4"
 PluginLanguageDomain = "e2MDB"
 PluginLanguageDir = "Extensions/e2MDB/locale"
 

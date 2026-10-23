@@ -4,18 +4,18 @@
 # Standalone daemon database helper. It must not import Enigma2 modules.                                #
 ########################################################################################################
 
+from contextlib import closing
 from glob import glob
 from hashlib import md5
 from json import dump, dumps, load, loads
 from os import cpu_count, listdir, makedirs, remove, rename, stat, walk
 from os.path import basename, dirname, exists, getsize, isdir, isfile, join, normpath, splitext
-from shutil import rmtree
-from urllib.parse import quote, unquote
 from re import search, sub
+from shutil import rmtree
 from sqlite3 import Row, connect
 from threading import RLock
 from time import time
-
+from urllib.parse import quote, unquote
 from provider.Common import CACHE_DIRS, candidate_title_year, normalize_text, safe_int
 
 
@@ -87,13 +87,17 @@ class BackendDatabase:
 		with self.lock:
 			self._schema_ready = False
 			self._journal_mode_ready = False
-			with self._connect() as conn:
+			with closing(self._connect()) as conn:
 				self._create_media_schema(conn)
 				self._create_recording_schema(conn)
 				self._create_provider_schema(conn)
 				self._create_live_epg_display_schema(conn)
 				self._create_live_epg_queue_schema(conn)
 				self._create_state_schema(conn)
+				conn.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_cache_aliases(media_hash TEXT NOT NULL, cache_hash TEXT NOT NULL, PRIMARY KEY(media_hash, cache_hash))")
+				conn.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_overrides(media_hash TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL)")
+				conn.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_paths(path TEXT PRIMARY KEY, retired INTEGER NOT NULL)")
+				self.createMovieIndex(conn)
 				conn.commit()
 			self._schema_ready = True
 
@@ -502,6 +506,20 @@ class BackendDatabase:
 			return "", []
 		return "(" + " OR ".join(clauses) + ")", params
 
+	def acceptMovieScan(self, connection, item):
+		row = connection.execute("SELECT retired FROM e2mdb_movie_paths WHERE path = ?", (item["path"],)).fetchone()
+		if row is not None:
+			if row[0]:
+				# An older scan must not recreate a recording removed or renamed by AML.
+				try:
+					status = stat(item["path"])
+				except OSError:
+					return False
+				if int(status.st_mtime) != safe_int(item.get("mtime"), -1) or status.st_size != safe_int(item.get("size_bytes"), -1):
+					return False
+			connection.execute("DELETE FROM e2mdb_movie_paths WHERE path = ?", (item["path"],))
+		return True
+
 	def upsert_recordings(self, items, prune_missing=True, prune_paths=None, seen_ids=None):
 		self.ensure_schema()
 		items = items if isinstance(items, list) else []
@@ -514,13 +532,15 @@ class BackendDatabase:
 		processed = 0
 		processed_ids = []
 		with self.lock:
-			with self._connect() as conn:
+			with closing(self._connect()) as conn:
 				for item in items:
 					if not isinstance(item, dict):
 						continue
 					recording_id = str(item.get("id") or "").strip()
 					path = str(item.get("path") or "").strip()
 					if not recording_id or not path:
+						continue
+					if not self.acceptMovieScan(conn, item):
 						continue
 					if recording_id not in seen:
 						seen.append(recording_id)
@@ -578,7 +598,7 @@ class BackendDatabase:
 					""")
 				if prune_missing:
 					path_sql, path_params = self._path_filter_sql(prune_paths, column_path="path", column_folder="folder")
-					where = []
+					where = ["path NOT IN (SELECT path FROM e2mdb_movie_paths WHERE retired = 0)"]
 					params = []
 					if seen:
 						where.append("NOT EXISTS (SELECT 1 FROM e2mdb_scan_seen s WHERE s.recording_id = e2mdb_recordings.recording_id)")
@@ -905,6 +925,8 @@ class BackendDatabase:
 			where.append("(m.search_string_norm LIKE ? OR r.search_text_norm LIKE ? OR lower(m.file_path) LIKE ? OR lower(COALESCE(m.series_title, '')) LIKE ? OR lower(COALESCE(m.provider_title, '')) LIKE ? OR lower(m.metadata_title) LIKE ?)")
 			query_plain = f"%{str(query or "").lower()}%"
 			params.extend([f"%{query_norm}%", f"%{query_norm}%", query_plain, query_plain, query_plain, query_plain])
+			where[-1] = f"({where[-1]} OR EXISTS (SELECT 1 FROM e2mdb_movie_overrides o WHERE o.media_hash = m.hash AND lower(o.title) LIKE ?))"
+			params.append(query_plain)
 		if media_type and media_type != "all":
 			if media_type in ("movie", "series"):
 				where.append("(lower(COALESCE(NULLIF(m.metadata_media_type, ''), m.provider_media_type, '')) = ? OR COALESCE(NULLIF(m.metadata_media_type, ''), m.provider_media_type, '') = '' OR lower(COALESCE(NULLIF(m.metadata_media_type, ''), m.provider_media_type, '')) = 'multi')")
@@ -949,14 +971,14 @@ class BackendDatabase:
 		return """
 			SELECT
 				m.hash AS media_hash, m.file_path AS media_file_path, m.file_name AS media_file_name,
-				m.search_string, m.metadata_title, m.metadata_subtitle, m.metadata_overview,
+				m.search_string, COALESCE(o.title, m.metadata_title) AS metadata_title, m.metadata_subtitle, COALESCE(o.description, m.metadata_overview) AS metadata_overview, o.media_hash AS manual_metadata,
 				m.metadata_genres, m.metadata_provider, m.metadata_provider_ids, m.metadata_media_type,
 				m.source_type, m.path_mode, m.path_mode_label, m.media_family, m.estimated_media_type,
 				m.provider_media_type, m.provider_title, m.series_title AS media_series_title, m.movie_title, m.scan_season_no, m.scan_episode_no,
 				m.metadata_year, m.metadata_runtime, m.metadata_rating, m.metadata_vote_count,
 				m.metadata_cover_path, m.metadata_backdrop_path, m.metadata_logo_path, m.metadata_image_path,
 				m.metadata_series_cover_path, m.metadata_episode_image_path,
-				m.metadata_released, m.metadata_countries, m.metadata_age_rating, m.metadata_cast,
+				m.metadata_released, m.metadata_countries, m.metadata_age_rating, m.metadata_cast, m.metadata_crew,
 				m.metadata_season_no, m.metadata_episode_no,
 				m.provider_lookup_status, m.provider_lookup_error, m.provider_lookup_updated, m.provider_best_json,
 				m.browser_ready,
@@ -968,10 +990,129 @@ class BackendDatabase:
 				r.search_text, r.scan_status, r.parse_error, r.payload_json
 			FROM e2mdb_media m
 			LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash
+			LEFT JOIN e2mdb_movie_overrides o ON o.media_hash = m.hash
 			%s
 			ORDER BY COALESCE(NULLIF(m.series_title, ''), NULLIF(m.provider_title, ''), NULLIF(m.metadata_title, ''), NULLIF(r.title, ''), m.search_string, m.file_name) COLLATE NOCASE ASC,
 				COALESCE(r.recorded_at, 0) DESC, COALESCE(r.mtime, 0) DESC
 		""" % where_sql
+
+	def getMovieDetails(self, paths):
+		if not isinstance(paths, list) or len(paths) > 64 or any(not isinstance(path, str) or not path.startswith("/") for path in paths):
+			return {"success": False, "error": "Expected at most 64 absolute movie paths"}
+		paths = list(dict.fromkeys(paths))
+		if not paths:
+			return {"success": True, "items": {}}
+		placeholders = ",".join("?" for path in paths)
+		with self.lock:
+			connection = self._connect()
+			try:
+				rows = connection.execute(self._browser_select_sql(f"WHERE m.file_path IN ({placeholders})"), paths).fetchall()
+			finally:
+				connection.close()
+		items = {}
+		for row in rows:
+			item = self._row_to_browser_item(row)
+			item.pop("_payload", None)
+			items[item["file_path"]] = item
+		return {"success": True, "items": items}
+
+	def createMovieIndex(self, connection):
+		connection.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_index(media_hash TEXT PRIMARY KEY, group_key TEXT NOT NULL, title TEXT NOT NULL)")
+		connection.execute("CREATE INDEX IF NOT EXISTS idx_movie_groups ON e2mdb_movie_index(group_key, title)")
+		connection.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_dirty(media_hash TEXT PRIMARY KEY)")
+		for operation in ("INSERT", "UPDATE"):
+			connection.execute(f"CREATE TRIGGER IF NOT EXISTS movie_index_{operation.lower()} AFTER {operation} ON e2mdb_media WHEN COALESCE(NEW.source_type, '') != 'live_epg' OR NEW.hash IN (SELECT media_hash FROM e2mdb_movie_index) BEGIN INSERT OR IGNORE INTO e2mdb_movie_dirty VALUES (NEW.hash); END")
+		connection.execute("CREATE TRIGGER IF NOT EXISTS movie_index_delete AFTER DELETE ON e2mdb_media BEGIN DELETE FROM e2mdb_movie_index WHERE media_hash = OLD.hash; DELETE FROM e2mdb_movie_dirty WHERE media_hash = OLD.hash; DELETE FROM e2mdb_movie_overrides WHERE media_hash = OLD.hash; DELETE FROM e2mdb_movie_cache_aliases WHERE media_hash = OLD.hash; END")
+		connection.execute("INSERT OR IGNORE INTO e2mdb_movie_dirty SELECT hash FROM e2mdb_media WHERE hash NOT IN (SELECT media_hash FROM e2mdb_movie_index) AND COALESCE(source_type, '') != 'live_epg'")
+
+	def refreshMovieIndex(self, connection):
+		# A request only normalizes one bounded batch; subsequent requests continue the persisted queue.
+		identifiers = [row[0] for row in connection.execute("SELECT media_hash FROM e2mdb_movie_dirty LIMIT 256")]
+		if identifiers:
+			placeholders = ",".join("?" for identifier in identifiers)
+			rows = connection.execute(self._browser_select_sql(f"WHERE m.hash IN ({placeholders})"), identifiers).fetchall()
+			for row in rows:
+				if str(row["source_type"] or "") == "live_epg" or not str(row["media_file_path"] or "").startswith("/"):
+					connection.execute("DELETE FROM e2mdb_movie_index WHERE media_hash = ?", (row["media_hash"],))
+					continue
+				item = self._row_to_browser_item(row)
+				key = self._browser_group_key(item, row)
+				title = item["series_title"] if item["media_type"] == "series" else item["title"]
+				connection.execute("INSERT OR REPLACE INTO e2mdb_movie_index VALUES (?, ?, ?)", (row["media_hash"], key, title))
+			connection.executemany("DELETE FROM e2mdb_movie_dirty WHERE media_hash = ?", [(identifier,) for identifier in identifiers])
+		return connection.execute("SELECT 1 FROM e2mdb_movie_dirty LIMIT 1").fetchone() is not None
+
+	def getMovieCatalogue(self, parameters):
+		where, values = self._browser_where_sql(query=parameters.get("query", ""), media_type=parameters.get("type", "all"), year=parameters.get("year", ""), genre=parameters.get("genre", ""), cast=parameters.get("cast", ""), include_pending=True)
+		where += (" AND " if where else "WHERE ") + "r.recording_id IS NOT NULL AND m.file_path LIKE '/%' AND m.file_path NOT LIKE '%/.Trash/%' AND COALESCE(m.source_type, '') != 'live_epg'"
+		where, values = self.excludeMovieFolders(where, values, parameters.get("hiddenFolders", []))
+		view = parameters.get("view", "library")
+		if view == "pending":
+			where += " AND COALESCE(m.browser_ready, '0') != '1'"
+		offset = (max(1, safe_int(parameters.get("page"), 1)) - 1) * 48
+		with self.lock:
+			connection = self._connect()
+			try:
+				with connection:
+					indexing = self.refreshMovieIndex(connection)
+				if view in ("latest", "pending", "files"):
+					sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + " ORDER BY COALESCE(NULLIF(r.recorded_at, 0), r.mtime, 0) DESC, m.hash LIMIT 49 OFFSET ?"
+					rows = connection.execute(sql, values + [offset]).fetchall()
+					items = [self._row_to_browser_item(row) for row in rows]
+				else:
+					sql = f"SELECT i.group_key, MIN(m.hash) AS media_hash, MIN(i.title) AS title FROM e2mdb_movie_index i JOIN e2mdb_media m ON m.hash = i.media_hash LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} GROUP BY i.group_key ORDER BY title COLLATE NOCASE, i.group_key LIMIT 49 OFFSET ?"
+					groups = connection.execute(sql, values + [offset]).fetchall()
+					items = []
+					if groups:
+						placeholders = ",".join("?" for group in groups)
+						rows = connection.execute(self._browser_select_sql(f"WHERE m.hash IN ({placeholders})"), [group["media_hash"] for group in groups]).fetchall()
+						byHash = {row["media_hash"]: self._row_to_browser_item(row) for row in rows}
+						for group in groups:
+							item = byHash[group["media_hash"]]
+							item["browser_key"] = group["group_key"]
+							item["title"] = group["title"]
+							if item["media_type"] == "series" and item.get("series_cover_file_path"):
+								item["poster_path"] = item["series_cover_file_path"]
+							items.append(item)
+			finally:
+				connection.close()
+		for item in items:
+			item.pop("_payload", None)
+		return {"success": True, "items": items[:48], "has_more": len(items) > 48, "indexing": indexing, "physical": view in ("latest", "pending", "files")}
+
+	def excludeMovieFolders(self, where, values, folders):
+		if not isinstance(folders, (tuple, list)) or len(folders) > 256:
+			raise ValueError("Expected at most 256 hidden folders")
+		for folder in folders:
+			if isinstance(folder, str) and folder.startswith("/"):
+				prefix = f"{folder.rstrip('/')}/"
+				where += " AND substr(m.file_path, 1, ?) != ?"
+				values.extend((len(prefix), prefix))
+		return where, values
+
+	def getMovieMembers(self, itemId, page=1, season=None, hiddenFolders=()):
+		with self.lock:
+			connection = self._connect()
+			try:
+				with connection:
+					indexing = self.refreshMovieIndex(connection)
+				group = connection.execute("SELECT group_key FROM e2mdb_movie_index WHERE media_hash = ?", (str(itemId),)).fetchone()
+				groupKey = group[0] if group else str(itemId)
+				where = "WHERE m.hash IN (SELECT media_hash FROM e2mdb_movie_index WHERE group_key = ?) AND r.recording_id IS NOT NULL AND m.file_path NOT LIKE '%/.Trash/%'"
+				where, values = self.excludeMovieFolders(where, [groupKey], hiddenFolders)
+				seasonColumn = "COALESCE(NULLIF(m.metadata_season_no, ''), NULLIF(m.scan_season_no, ''), NULLIF(r.season_no, ''), '-1')"
+				seasons = [row[0] for row in connection.execute(f"SELECT DISTINCT CAST({seasonColumn} AS INTEGER) FROM e2mdb_media m LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} ORDER BY 1 LIMIT 128", values)]
+				if season is not None:
+					where += f" AND CAST({seasonColumn} AS INTEGER) = ?"
+					values.append(safe_int(season, -1))
+				values.append((max(1, safe_int(page, 1)) - 1) * 48)
+				sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY CAST({seasonColumn} AS INTEGER), CAST(COALESCE(NULLIF(m.metadata_episode_no, ''), m.scan_episode_no, '0') AS INTEGER), m.file_path LIMIT 49 OFFSET ?"
+				items = [self._row_to_browser_item(row) for row in connection.execute(sql, values)]
+			finally:
+				connection.close()
+		for item in items:
+			item.pop("_payload", None)
+		return {"success": True, "items": items[:48], "has_more": len(items) > 48, "seasons": seasons, "indexing": indexing}
 
 	def _browser_rows(self, query="", media_type="all", year="", genre="", cast="", letter="", include_pending=False):
 		where_sql, params = self._browser_where_sql(query=query, media_type=media_type, year=year, genre=genre, cast=cast, letter=letter, include_pending=include_pending)
@@ -1074,6 +1215,8 @@ class BackendDatabase:
 			payload = {}
 		title = self._first_non_empty(row.get("metadata_title"), best.get("title"), best.get("name"), row.get("recording_title"), row.get("search_string"), row.get("media_file_name"))
 		overview = self._first_non_empty(row.get("metadata_overview"), best.get("overview"), best.get("description"), row.get("recording_description"), row.get("extended_description"))
+		if row.get("manual_metadata"):
+			title, overview = row["metadata_title"], row["metadata_overview"]
 		media_type = self._media_type_from_payload(payload, self._first_non_empty(row.get("metadata_media_type"), row.get("provider_media_type"), row.get("estimated_media_type"), best.get("media_type")))
 		series_title = title
 		if media_type == "series":
@@ -1167,6 +1310,11 @@ class BackendDatabase:
 			"size_bytes": row.get("size_bytes") or 0,
 			"parse_error": row.get("parse_error") or "",
 			"cast": self._decode_json_value(row.get("metadata_cast"), fallback=[]),
+			"crew": self._decode_json_value(row.get("metadata_crew"), fallback=[]),
+			"countries": self._decode_json_value(row.get("metadata_countries"), fallback=row.get("metadata_countries") or []),
+			"age_rating": row.get("metadata_age_rating") or "",
+			"tagline": best.get("tagline") or "",
+			"original_title": best.get("original_title") or best.get("original_name") or "",
 			"_payload": payload,
 		}
 
@@ -3310,6 +3458,10 @@ class BackendDatabase:
 		if not path:
 			return True
 		media_hash = self._hash_from_file_path(path)
+		if media_hash:
+			row = conn.execute("SELECT 1 FROM e2mdb_movie_cache_aliases a JOIN e2mdb_media m ON m.hash = a.media_hash WHERE a.cache_hash = ? LIMIT 1", (media_hash,)).fetchone()
+			if row:
+				return True
 		if path.endswith(".json"):
 			row = conn.execute("SELECT 1 FROM e2mdb_epg_events WHERE json_path = ? LIMIT 1", (path,)).fetchone()
 			if row:
