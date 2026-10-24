@@ -39,6 +39,7 @@ class E2MDBMovieLibrary:
 			"tagline": str(item.get("tagline") or ""),
 			"originalTitle": str(item.get("original_title") or ""),
 			"size": integerValue(item.get("size_bytes"), 0),
+			"fileSize": integerValue(item.get("size_bytes"), 0),
 			"type": item.get("media_type") or "",
 			"poster": imagePath("poster_path", "cover_file_path", "cover_path"),
 			"backdrop": imagePath("backdrop_file_path", "backdrop_path"),
@@ -67,7 +68,7 @@ class E2MDBMovieLibrary:
 				raise RuntimeError(result.get("error", "e2MDB library unavailable"))
 			return {"items": [self.normalizeItem(item) for item in result.get("items", [])], "hasMore": bool(result.get("has_more")), "indexing": bool(result.get("indexing")), "physical": bool(result.get("physical"))}
 		if operation in ("members", "seasons"):
-			result = client.request("movie_members", id=parameters["id"], page=parameters.get("page", 1), season=parameters.get("season"), hiddenFolders=parameters.get("hiddenFolders", []))
+			result = client.request("movie_members", id=parameters["id"], page=parameters.get("page", 1), season=parameters.get("season"), hiddenFolders=parameters.get("hiddenFolders", []), sort=parameters.get("sort", "episode"))
 			if not result.get("success"):
 				raise RuntimeError(result.get("error", "e2MDB movie unavailable"))
 			return {"items": [self.normalizeItem(item) for item in result.get("items", [])], "hasMore": bool(result.get("has_more")), "seasons": result.get("seasons", []), "indexing": bool(result.get("indexing"))}

@@ -1047,6 +1047,7 @@ class BackendDatabase:
 		where += (" AND " if where else "WHERE ") + "r.recording_id IS NOT NULL AND m.file_path LIKE '/%' AND m.file_path NOT LIKE '%/.Trash/%' AND COALESCE(m.source_type, '') != 'live_epg'"
 		where, values = self.excludeMovieFolders(where, values, parameters.get("hiddenFolders", []))
 		view = parameters.get("view", "library")
+		sortOrder = str(parameters.get("sort") or "title")
 		if view == "pending":
 			where += " AND COALESCE(m.browser_ready, '0') != '1'"
 		offset = (max(1, safe_int(parameters.get("page"), 1)) - 1) * 48
@@ -1056,11 +1057,13 @@ class BackendDatabase:
 				with connection:
 					indexing = self.refreshMovieIndex(connection)
 				if view in ("latest", "pending", "files"):
-					sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + " ORDER BY COALESCE(NULLIF(r.recorded_at, 0), r.mtime, 0) DESC, m.hash LIMIT 49 OFFSET ?"
+					order = self.movieOrderSql("newest" if view == "latest" else sortOrder)
+					sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY {order}, m.hash LIMIT 49 OFFSET ?"
 					rows = connection.execute(sql, values + [offset]).fetchall()
 					items = [self._row_to_browser_item(row) for row in rows]
 				else:
-					sql = f"SELECT i.group_key, MIN(m.hash) AS media_hash, MIN(i.title) AS title FROM e2mdb_movie_index i JOIN e2mdb_media m ON m.hash = i.media_hash LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} GROUP BY i.group_key ORDER BY title COLLATE NOCASE, i.group_key LIMIT 49 OFFSET ?"
+					order = self.movieOrderSql(sortOrder, grouped=True)
+					sql = f"SELECT i.group_key, MIN(m.hash) AS media_hash, MIN(i.title) AS title FROM e2mdb_movie_index i JOIN e2mdb_media m ON m.hash = i.media_hash LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} GROUP BY i.group_key ORDER BY {order}, i.group_key LIMIT 49 OFFSET ?"
 					groups = connection.execute(sql, values + [offset]).fetchall()
 					items = []
 					if groups:
@@ -1090,7 +1093,16 @@ class BackendDatabase:
 				values.extend((len(prefix), prefix))
 		return where, values
 
-	def getMovieMembers(self, itemId, page=1, season=None, hiddenFolders=()):
+	def movieOrderSql(self, sortOrder, grouped=False):
+		title = "MIN(i.title)" if grouped else "COALESCE(NULLIF(m.metadata_title, ''), NULLIF(r.title, ''), m.search_string, m.file_name)"
+		recorded = "COALESCE(NULLIF(r.recorded_at, 0), r.mtime, 0)"
+		year = "CAST(COALESCE(NULLIF(m.metadata_year, ''), substr(m.metadata_released, 1, 4), '0') AS INTEGER)"
+		rating = "CAST(COALESCE(NULLIF(m.metadata_rating, ''), '0') AS REAL)"
+		if grouped:
+			recorded, year, rating = (f"MAX({x})" for x in (recorded, year, rating))
+		return {"title": f"{title} COLLATE NOCASE ASC", "titleDesc": f"{title} COLLATE NOCASE DESC", "newest": f"{recorded} DESC", "oldest": f"{recorded} ASC", "year": f"{year} DESC, {title} COLLATE NOCASE ASC", "rating": f"{rating} DESC, {title} COLLATE NOCASE ASC"}.get(sortOrder, f"{title} COLLATE NOCASE ASC")
+
+	def getMovieMembers(self, itemId, page=1, season=None, hiddenFolders=(), sort="episode"):
 		with self.lock:
 			connection = self._connect()
 			try:
@@ -1106,7 +1118,8 @@ class BackendDatabase:
 					where += f" AND CAST({seasonColumn} AS INTEGER) = ?"
 					values.append(safe_int(season, -1))
 				values.append((max(1, safe_int(page, 1)) - 1) * 48)
-				sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY CAST({seasonColumn} AS INTEGER), CAST(COALESCE(NULLIF(m.metadata_episode_no, ''), m.scan_episode_no, '0') AS INTEGER), m.file_path LIMIT 49 OFFSET ?"
+				order = f"CAST({seasonColumn} AS INTEGER), CAST(COALESCE(NULLIF(m.metadata_episode_no, ''), m.scan_episode_no, '0') AS INTEGER)" if sort == "episode" else self.movieOrderSql(sort)
+				sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY {order}, m.file_path LIMIT 49 OFFSET ?"
 				items = [self._row_to_browser_item(row) for row in connection.execute(sql, values)]
 			finally:
 				connection.close()

@@ -1831,7 +1831,7 @@ class CommandSocketServer(Thread):
 			return {"success": False, "error": "database unavailable"}
 		if command == "movie_members":
 			if self.job_manager.database:
-				return self.job_manager.database.getMovieMembers(request.get("id", ""), request.get("page", 1), request.get("season"), request.get("hiddenFolders", []))
+				return self.job_manager.database.getMovieMembers(request.get("id", ""), request.get("page", 1), request.get("season"), request.get("hiddenFolders", []), request.get("sort", "episode"))
 			return {"success": False, "error": "database unavailable"}
 		if command == "movie_catalogue":
 			if self.job_manager.database:
