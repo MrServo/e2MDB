@@ -1048,6 +1048,21 @@ class BackendDatabase:
 		where, values = self.excludeMovieFolders(where, values, parameters.get("hiddenFolders", []))
 		view = parameters.get("view", "library")
 		sortOrder = str(parameters.get("sort") or "title")
+		latestLimit = 0
+		if view == "latest":
+			sortOrder = str(parameters.get("sort") or "newest")
+			latestLimit = max(0, min(20000, safe_int(parameters.get("limit"), 0)))
+			where += " AND COALESCE(NULLIF(r.recorded_at, 0), r.mtime, 0) >= ?"
+			values.append(max(0, safe_int(parameters.get("since"), 0)))
+			root = str(parameters.get("root") or "").rstrip("/")
+			if root.startswith("/"):
+				prefix = f"{root}/"
+				where += " AND substr(m.file_path, 1, ?) = ?"
+				values.extend((len(prefix), prefix))
+			if latestLimit:
+				# Select the newest N first; presentation sorting applies to that collection.
+				where = f"WHERE m.hash IN (SELECT m.hash FROM e2mdb_media m LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} ORDER BY {self.movieOrderSql('newest')}, m.hash LIMIT ?)"
+				values.append(latestLimit)
 		if view == "pending":
 			where += " AND COALESCE(m.browser_ready, '0') != '1'"
 		offset = (max(1, safe_int(parameters.get("page"), 1)) - 1) * 48
@@ -1057,7 +1072,7 @@ class BackendDatabase:
 				with connection:
 					indexing = self.refreshMovieIndex(connection)
 				if view in ("latest", "pending", "files"):
-					order = self.movieOrderSql("newest" if view == "latest" else sortOrder)
+					order = self.movieOrderSql(sortOrder)
 					sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY {order}, m.hash LIMIT 49 OFFSET ?"
 					rows = connection.execute(sql, values + [offset]).fetchall()
 					items = [self._row_to_browser_item(row) for row in rows]
