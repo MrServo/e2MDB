@@ -22,6 +22,7 @@ class E2MDBMovieLibrary:
 			"id": str(item.get("id") or item.get("media_hash") or ""),
 			"path": item.get("file_path") or "",
 			"title": item.get("title") or item.get("file_name") or "",
+			"recordingTitle": item.get("recording_title") or "",
 			"description": item.get("overview") or item.get("description") or "",
 			"series": item.get("series_title") or "",
 			"season": integerValue(item.get("season_no")),

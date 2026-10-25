@@ -1272,6 +1272,7 @@ class BackendDatabase:
 			"recording_id": row.get("recording_id") or media_hash,
 			"title": title,
 			"name": title,
+			"recording_title": row.get("recording_title") or "",
 			"series_title": series_title,
 			"file_name": row.get("media_file_name") or row.get("recording_name") or "",
 			"file_path": row.get("media_file_path") or row.get("recording_path") or "",
