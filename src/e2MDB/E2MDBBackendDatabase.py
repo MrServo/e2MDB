@@ -16,7 +16,7 @@ from sqlite3 import Row, connect
 from threading import RLock
 from time import time
 from urllib.parse import quote, unquote
-from provider.Common import CACHE_DIRS, candidate_title_year, normalize_text, safe_int
+from provider.Common import CACHE_DIRS, candidate_title_year, image_extension, normalize_text, safe_int
 
 
 DEFAULT_DATABASE_ROOT = "/media/hdd/e2MDB"
@@ -814,7 +814,7 @@ class BackendDatabase:
 					status,
 					error,
 					now,
-					self._json(best),
+					self._json(dict(best, season_poster_path=artwork.get("season_poster_path") or best.get("season_poster_path", ""))),
 					str(best.get("title") or best.get("episode_name") or ""), str(best.get("title") or best.get("episode_name") or ""),
 					str(best.get("series_title") or best.get("show_title") or ""), str(best.get("series_title") or best.get("show_title") or ""),
 					str(best.get("overview") or best.get("description") or ""), str(best.get("overview") or best.get("description") or ""),
@@ -1011,12 +1011,16 @@ class BackendDatabase:
 				connection.close()
 		items = {}
 		for row in rows:
-			item = self._row_to_browser_item(row)
+			item = self._row_to_browser_item(row, seasonPoster=True)
 			item.pop("_payload", None)
 			items[item["file_path"]] = item
 		return {"success": True, "items": items}
 
 	def createMovieIndex(self, connection):
+		filterIndexExists = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'e2mdb_movie_filters'").fetchone() is not None
+		connection.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_filters(media_hash TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(media_hash, field, value))")
+		connection.execute("CREATE INDEX IF NOT EXISTS idx_movie_filter_values ON e2mdb_movie_filters(field, value COLLATE NOCASE, media_hash)")
+		connection.execute("CREATE TRIGGER IF NOT EXISTS movie_filters_delete AFTER DELETE ON e2mdb_media BEGIN DELETE FROM e2mdb_movie_filters WHERE media_hash = OLD.hash; END")
 		connection.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_index(media_hash TEXT PRIMARY KEY, group_key TEXT NOT NULL, title TEXT NOT NULL)")
 		connection.execute("CREATE INDEX IF NOT EXISTS idx_movie_groups ON e2mdb_movie_index(group_key, title)")
 		connection.execute("CREATE TABLE IF NOT EXISTS e2mdb_movie_dirty(media_hash TEXT PRIMARY KEY)")
@@ -1024,28 +1028,54 @@ class BackendDatabase:
 			connection.execute(f"CREATE TRIGGER IF NOT EXISTS movie_index_{operation.lower()} AFTER {operation} ON e2mdb_media WHEN COALESCE(NEW.source_type, '') != 'live_epg' OR NEW.hash IN (SELECT media_hash FROM e2mdb_movie_index) BEGIN INSERT OR IGNORE INTO e2mdb_movie_dirty VALUES (NEW.hash); END")
 		connection.execute("CREATE TRIGGER IF NOT EXISTS movie_index_delete AFTER DELETE ON e2mdb_media BEGIN DELETE FROM e2mdb_movie_index WHERE media_hash = OLD.hash; DELETE FROM e2mdb_movie_dirty WHERE media_hash = OLD.hash; DELETE FROM e2mdb_movie_overrides WHERE media_hash = OLD.hash; DELETE FROM e2mdb_movie_cache_aliases WHERE media_hash = OLD.hash; END")
 		connection.execute("INSERT OR IGNORE INTO e2mdb_movie_dirty SELECT hash FROM e2mdb_media WHERE hash NOT IN (SELECT media_hash FROM e2mdb_movie_index) AND COALESCE(source_type, '') != 'live_epg'")
+		if not filterIndexExists:
+			connection.execute("INSERT OR IGNORE INTO e2mdb_movie_dirty SELECT hash FROM e2mdb_media WHERE COALESCE(source_type, '') != 'live_epg'")
 
 	def refreshMovieIndex(self, connection):
 		# A request only normalizes one bounded batch; subsequent requests continue the persisted queue.
 		identifiers = [row[0] for row in connection.execute("SELECT media_hash FROM e2mdb_movie_dirty LIMIT 256")]
 		if identifiers:
+			connection.executemany("DELETE FROM e2mdb_movie_filters WHERE media_hash = ?", [(x,) for x in identifiers])
 			placeholders = ",".join("?" for identifier in identifiers)
 			rows = connection.execute(self._browser_select_sql(f"WHERE m.hash IN ({placeholders})"), identifiers).fetchall()
 			for row in rows:
 				if str(row["source_type"] or "") == "live_epg" or not str(row["media_file_path"] or "").startswith("/"):
 					connection.execute("DELETE FROM e2mdb_movie_index WHERE media_hash = ?", (row["media_hash"],))
 					continue
-				item = self._row_to_browser_item(row)
+				item = self._row_to_browser_item(row, seasonPoster=False)
 				key = self._browser_group_key(item, row)
 				title = item["series_title"] if item["media_type"] == "series" else item["title"]
 				connection.execute("INSERT OR REPLACE INTO e2mdb_movie_index VALUES (?, ?, ?)", (row["media_hash"], key, title))
+				filters = set()
+				year = str(item.get("year") or "").strip()
+				if len(year) == 4 and year.isdigit():
+					filters.add(("year", year))
+				filters.update(("genre", x.strip()) for x in str(item.get("genres") or "").replace("/", ",").split(",") if x.strip())
+				people = item.get("cast")
+				if isinstance(people, list):
+					for person in people:
+						name = str((person.get("name") or person.get("actor") or "") if isinstance(person, dict) else person or "").strip()
+						if name:
+							filters.add(("cast", name))
+				connection.executemany("INSERT OR IGNORE INTO e2mdb_movie_filters VALUES (?, ?, ?)", [(row["media_hash"], *x) for x in filters])
 			connection.executemany("DELETE FROM e2mdb_movie_dirty WHERE media_hash = ?", [(identifier,) for identifier in identifiers])
 		return connection.execute("SELECT 1 FROM e2mdb_movie_dirty LIMIT 1").fetchone() is not None
 
-	def getMovieCatalogue(self, parameters):
-		where, values = self._browser_where_sql(query=parameters.get("query", ""), media_type=parameters.get("type", "all"), year=parameters.get("year", ""), genre=parameters.get("genre", ""), cast=parameters.get("cast", ""), include_pending=True)
+	def getMovieWhere(self, parameters, ignoreFilter=None):
+		filters = {x: parameters.get(x, "") if x != ignoreFilter else "" for x in ("year", "genre", "cast")}
+		exact = bool(parameters.get("exactFilters")) or ignoreFilter is not None
+		where, values = self._browser_where_sql(query=parameters.get("query", ""), media_type=parameters.get("type", "all"), include_pending=True, **({} if exact else filters))
 		where += (" AND " if where else "WHERE ") + "r.recording_id IS NOT NULL AND m.file_path LIKE '/%' AND m.file_path NOT LIKE '%/.Trash/%' AND COALESCE(m.source_type, '') != 'live_epg'"
 		where, values = self.excludeMovieFolders(where, values, parameters.get("hiddenFolders", []))
+		if exact:
+			for field, value in filters.items():
+				if value:
+					where += " AND m.hash IN (SELECT media_hash FROM e2mdb_movie_filters WHERE field = ? AND value = ? COLLATE NOCASE)"
+					values.extend((field, value))
+		return where, values
+
+	def getMovieCatalogue(self, parameters):
+		where, values = self.getMovieWhere(parameters)
 		view = parameters.get("view", "library")
 		sortOrder = str(parameters.get("sort") or "title")
 		latestLimit = 0
@@ -1075,7 +1105,7 @@ class BackendDatabase:
 					order = self.movieOrderSql(sortOrder)
 					sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY {order}, m.hash LIMIT 49 OFFSET ?"
 					rows = connection.execute(sql, values + [offset]).fetchall()
-					items = [self._row_to_browser_item(row) for row in rows]
+					items = [self._row_to_browser_item(row, seasonPoster=True) for row in rows]
 				else:
 					order = self.movieOrderSql(sortOrder, grouped=True)
 					sql = f"SELECT i.group_key, MIN(m.hash) AS media_hash, MIN(i.title) AS title FROM e2mdb_movie_index i JOIN e2mdb_media m ON m.hash = i.media_hash LEFT JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} GROUP BY i.group_key ORDER BY {order}, i.group_key LIMIT 49 OFFSET ?"
@@ -1097,6 +1127,30 @@ class BackendDatabase:
 		for item in items:
 			item.pop("_payload", None)
 		return {"success": True, "items": items[:48], "has_more": len(items) > 48, "indexing": indexing, "physical": view in ("latest", "pending", "files")}
+
+	def getMovieFilterValues(self, parameters):
+		field = parameters.get("field")
+		if field not in ("year", "genre", "cast"):
+			raise ValueError("Unknown movie filter")
+		where, values = self.getMovieWhere(parameters, ignoreFilter=field)
+		offset = (max(1, safe_int(parameters.get("filterPage"), 1)) - 1) * 100
+		order = "DESC" if field == "year" else "ASC"
+		cursor = parameters.get("filterAfter")
+		cursorSql = ""
+		cursorValues = []
+		if isinstance(cursor, str):
+			offset = 0
+			if cursor:
+				cursorSql = f" AND f.value COLLATE NOCASE {'<' if field == 'year' else '>'} ?"
+				cursorValues.append(cursor)
+		restricted = any(parameters.get(x) for x in ("query", "year", "genre", "cast") if x != field)
+		selection = f"f.media_hash IN (SELECT m.hash FROM e2mdb_media m JOIN e2mdb_recordings r ON r.media_hash = m.hash {where})" if restricted else f"EXISTS (SELECT 1 FROM e2mdb_media m JOIN e2mdb_recordings r ON r.media_hash = m.hash {where} AND m.hash = f.media_hash)"
+		# The covering index supplies sorted values; no catalogue-wide JSON decoding in filter requests.
+		with self.lock, closing(self._connect()) as connection:
+			with connection:
+				indexing = self.refreshMovieIndex(connection)
+			rows = connection.execute(f"SELECT f.value FROM e2mdb_movie_filters f WHERE f.field = ?{cursorSql} AND {selection} GROUP BY f.value COLLATE NOCASE ORDER BY f.value COLLATE NOCASE {order} LIMIT 101 OFFSET ?", [field, *cursorValues, *values, offset]).fetchall()
+		return {"success": True, "values": [x[0] for x in rows[:100]], "has_more": len(rows) > 100, "indexing": indexing}
 
 	def excludeMovieFolders(self, where, values, folders):
 		if not isinstance(folders, (tuple, list)) or len(folders) > 256:
@@ -1135,7 +1189,7 @@ class BackendDatabase:
 				values.append((max(1, safe_int(page, 1)) - 1) * 48)
 				order = f"CAST({seasonColumn} AS INTEGER), CAST(COALESCE(NULLIF(m.metadata_episode_no, ''), m.scan_episode_no, '0') AS INTEGER)" if sort == "episode" else self.movieOrderSql(sort)
 				sql = self._browser_select_sql(where).rsplit("ORDER BY", 1)[0] + f" ORDER BY {order}, m.file_path LIMIT 49 OFFSET ?"
-				items = [self._row_to_browser_item(row) for row in connection.execute(sql, values)]
+				items = [self._row_to_browser_item(row, seasonPoster=True) for row in connection.execute(sql, values)]
 			finally:
 				connection.close()
 		for item in items:
@@ -1233,7 +1287,23 @@ class BackendDatabase:
 			return value
 		return value
 
-	def _row_to_browser_item(self, row):
+	def getSeasonPoster(self, best, row):
+		path = self._image_file_path(best.get("season_poster_path") or best.get("season_cover_path"))
+		if not path:
+			# Older scans saved the season image in the shared cache, but not its path in SQLite.
+			provider = str(best.get("provider") or row.get("metadata_provider") or "").strip().lower()
+			identifiers = best.get("provider_ids") or self._decode_json_value(row.get("metadata_provider_ids"), fallback={})
+			identifier = str(next((best[x] for x in ("series_id", "id", "tvdb_id", "tmdb_id", "imdb_id") if best.get(x) and (x != "imdb_id" or provider in ("imdb", "omdb"))), "") or (identifiers.get(provider, "") if isinstance(identifiers, dict) else ""))
+			season = safe_int(row.get("metadata_season_no") or row.get("scan_season_no") or best.get("season_no"), -1)
+			url = best.get("season_cover_url") or best.get("season_poster_url")
+			seasons = best.get("seasons")
+			if not url and isinstance(seasons, list):
+				url = next((x.get("cover_url") or x.get("poster_url") for x in seasons if isinstance(x, dict) and safe_int(x.get("season_no"), -1) == season), "")
+			if url and season >= 0 and provider and identifier and all(x not in (".", "..") and "/" not in x and "\\" not in x for x in (provider, identifier)):
+				path = join(self._cache_root(), "seasons", provider, identifier, f"S{season:02d}", f"cover.{image_extension(url)}")
+		return path if path and isfile(path) else ""
+
+	def _row_to_browser_item(self, row, seasonPoster=False):
 		row = dict(row)
 		best = self._decode_json_value(row.get("provider_best_json"), fallback={})
 		if not isinstance(best, dict):
@@ -1315,6 +1385,7 @@ class BackendDatabase:
 			"series_poster_url": series_cover_url,
 			"series_cover_path": series_cover_file_path,
 			"series_cover_file_path": series_cover_file_path,
+			"season_poster_path": self.getSeasonPoster(best, row) if seasonPoster and media_type == "series" else "",
 			"backdrop_url": backdrop_url,
 			"backdrop_path": backdrop_file_path,
 			"backdrop_file_path": backdrop_file_path,

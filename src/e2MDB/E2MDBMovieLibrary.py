@@ -5,9 +5,9 @@ from .E2MDBBackendClient import E2MDBBackendClient
 
 class E2MDBMovieLibrary:
 	label = "e2MDB"
-	capabilities = frozenset(("details", "browse", "members", "seasons", "changes"))
+	capabilities = frozenset(("details", "browse", "members", "seasons", "filters", "changes"))
 
-	def normalizeItem(self, item):
+	def normalizeItem(self, item, grouped=False):
 		def imagePath(*names):
 			return next((item[name] for name in names if isinstance(item.get(name), str) and isabs(item[name])), "")
 
@@ -18,6 +18,11 @@ class E2MDBMovieLibrary:
 			except (TypeError, ValueError, OverflowError):
 				return default
 
+		poster = imagePath("poster_path", "cover_file_path", "cover_path")
+		if item.get("media_type") == "series":
+			poster = imagePath("series_cover_file_path", "series_cover_path")
+			if not grouped:
+				poster = imagePath("season_poster_path") or poster
 		return {
 			"id": str(item.get("id") or item.get("media_hash") or ""),
 			"path": item.get("file_path") or "",
@@ -42,7 +47,8 @@ class E2MDBMovieLibrary:
 			"size": integerValue(item.get("size_bytes"), 0),
 			"fileSize": integerValue(item.get("size_bytes"), 0),
 			"type": item.get("media_type") or "",
-			"poster": imagePath("poster_path", "cover_file_path", "cover_path"),
+			"poster": poster,
+			"preview": imagePath("episode_cover_file_path", "episode_cover_path"),
 			"backdrop": imagePath("backdrop_file_path", "backdrop_path"),
 			"group": item.get("browser_key") or "",
 			"pending": str(item.get("browser_ready", "")).lower() not in ("1", "true"),
@@ -53,6 +59,11 @@ class E2MDBMovieLibrary:
 
 	def request(self, operation, parameters):
 		client = E2MDBBackendClient(timeout=3.0)
+		if operation == "filters":
+			result = client.request("movie_filters", **parameters)
+			if not result.get("success"):
+				raise RuntimeError(result.get("error", "e2MDB filters unavailable"))
+			return {"values": result.get("values", []), "hasMore": bool(result.get("has_more")), "indexing": bool(result.get("indexing"))}
 		if operation == "changes":
 			result = client.request("movie_changes", events=parameters["events"])
 			if not result.get("success"):
@@ -67,7 +78,7 @@ class E2MDBMovieLibrary:
 			result = client.request("movie_catalogue", **parameters)
 			if not result.get("success"):
 				raise RuntimeError(result.get("error", "e2MDB library unavailable"))
-			return {"items": [self.normalizeItem(item) for item in result.get("items", [])], "hasMore": bool(result.get("has_more")), "indexing": bool(result.get("indexing")), "physical": bool(result.get("physical"))}
+			return {"items": [self.normalizeItem(item, grouped=not result.get("physical")) for item in result.get("items", [])], "hasMore": bool(result.get("has_more")), "indexing": bool(result.get("indexing")), "physical": bool(result.get("physical"))}
 		if operation in ("members", "seasons"):
 			result = client.request("movie_members", id=parameters["id"], page=parameters.get("page", 1), season=parameters.get("season"), hiddenFolders=parameters.get("hiddenFolders", []), sort=parameters.get("sort", "episode"))
 			if not result.get("success"):

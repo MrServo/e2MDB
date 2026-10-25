@@ -1837,6 +1837,10 @@ class CommandSocketServer(Thread):
 			if self.job_manager.database:
 				return self.job_manager.database.getMovieCatalogue(request)
 			return {"success": False, "error": "database unavailable"}
+		if command == "movie_filters":
+			if self.job_manager.database:
+				return self.job_manager.database.getMovieFilterValues(request)
+			return {"success": False, "error": "database unavailable"}
 		if command == "movie_changes":
 			if self.job_manager.database:
 				return applyMovieChanges(self.job_manager.database, request.get("events", []))
